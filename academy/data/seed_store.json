@@ -11,7 +11,9 @@
       "email": "demo@skillforge.local",
       "passwordHash": "643bc8c06f8c5b7d4f0fad124328291ebce7534f18fe898127b2aec2a699816a",
       "role": "student",
-      "createdAt": "2026-05-08T14:12:17.535Z"
+      "createdAt": "2026-05-08T14:12:17.535Z",
+      "emailVerified": true,
+      "lastLoginAt": "2026-05-08T14:12:17.535Z"
     }
   ],
   "sessions": [
@@ -19,10 +21,16 @@
       "id": "session_demo",
       "userId": "user_demo",
       "token": "session_be2217a0193d435080e7fc1e002d2ff7",
-      "createdAt": "2026-05-08T14:12:17.535Z"
+      "createdAt": "2026-05-08T14:12:17.535Z",
+      "expiresAt": "2026-06-07T14:12:17.535Z",
+      "lastSeenAt": "2026-05-08T14:12:17.535Z",
+      "revokedAt": null,
+      "userAgent": "seed",
+      "ipAddress": "127.0.0.1"
     }
   ],
   "authAudit": [],
+  "passwordResetRequests": [],
   "oauthStates": [],
   "newsletterSubscribers": [],
   "enrollments": [],

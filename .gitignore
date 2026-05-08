@@ -27,16 +27,30 @@ MANIFEST
 venv/
 env/
 ENV/
+.envvenv/
 env.bak/
 venv.bak/
+.venv/
 
 # Django
 *.log
 *.pot
-db.sqlite3
-db.sqlite3-journal
+*.sqlite3
+*.sqlite3-journal
 /media
 /staticfiles
+
+# Testing and tools
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+coverage.*
+.cache
+.mypy_cache/
+.pytype/
 
 # IDE and editors
 .vscode/
@@ -55,7 +69,6 @@ Thumbs.db
 .env.*.local
 
 # OS
-.DS_Store
 desktop.ini
 
 # Node (if applicable)

@@ -1,32 +1,13 @@
-from django.urls import path, re_path
+from django.contrib import admin
+from django.urls import include, path
 
-from . import views
+
+admin.site.site_header = "SkillForge Admin"
+admin.site.site_title = "SkillForge Admin"
+admin.site.index_title = "Platform Management"
 
 
 urlpatterns = [
-    path("", views.index, name="index"),
-    path("index.html", views.index, name="index-file"),
-    path("api/health", views.health, name="health"),
-    path("api/auth/login", views.auth_login, name="auth-login"),
-    path("api/auth/signup", views.auth_signup, name="auth-signup"),
-    path("api/auth/oauth/start", views.auth_oauth_start, name="auth-oauth-start"),
-    path("api/newsletter/subscribe", views.newsletter_subscribe, name="newsletter-subscribe"),
-    path("api/enrollments", views.enrollments, name="enrollments"),
-    path("api/wishlist", views.wishlist, name="wishlist"),
-    path("api/ai/tutor", views.ai_tutor, name="ai-tutor"),
-    path("api/courses/share", views.course_share, name="course-share"),
-    path("api/gifts", views.gifts, name="gifts"),
-    path("api/coupons/validate", views.coupon_validate, name="coupon-validate"),
-    path("api/notes", views.notes, name="notes"),
-    path("api/notifications", views.notifications, name="notifications"),
-    path("api/instructor/courses/drafts", views.instructor_drafts, name="instructor-drafts"),
-    path("api/instructor/courses", views.instructor_courses, name="instructor-courses"),
-    path("api/instructor/courses/thumbnail", views.instructor_thumbnail, name="instructor-thumbnail"),
-    path("api/dashboard/tab", views.dashboard_tab, name="dashboard-tab"),
-    path("api/certificates/share", views.certificate_share, name="certificate-share"),
-    path("api/certificates/preview", views.certificate_preview, name="certificate-preview"),
-    path("api/courses/<slug:course_id>/resources", views.course_resources, name="course-resources"),
-    path("api/courses/<slug:course_id>", views.course_detail, name="course-detail"),
-    path("api/courses", views.course_list, name="course-list"),
-    re_path(r"^api/.*$", views.api_not_found, name="api-not-found"),
+    path("admin/", admin.site.urls),
+    path("", include("academy.urls")),
 ]

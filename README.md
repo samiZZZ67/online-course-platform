@@ -18,7 +18,14 @@ Then open `http://localhost:3000/`. The Django server will:
 
 - serve the existing `index.html`
 - expose the frontend-matching API routes under `/api/*`
-- persist state to `backend/data/store.json`
+- persist application state in `db.sqlite3` through Django models
+- expose the Django admin at `/admin/`
+
+The root dispatcher lives in `backend/urls.py`, while the actual site and API routes live in `academy/urls.py`.
+The domain models, admin registrations, tests, static assets, and seed logic now live in the `academy` app.
+
+Authentication design for the next implementation step is documented in `docs/authentication-architecture.md`.
+The custom user model design is documented in `docs/custom-user-model.md`.
 
 ## Test
 
@@ -26,11 +33,31 @@ Then open `http://localhost:3000/`. The Django server will:
 python manage.py test
 ```
 
+## Seed Data
+
+```bash
+python manage.py seed_skillforge
+```
+
+Run that after `migrate` to load the starter catalog, coupons, and notifications.
+
+## Admin
+
+```bash
+python manage.py createsuperuser
+```
+
+Then sign in at `http://localhost:3000/admin/`.
+
 ## Implemented API Surface
 
 - `POST /api/auth/login`
 - `POST /api/auth/signup`
+- `GET /api/auth/me`
+- `POST /api/auth/logout`
 - `POST /api/auth/oauth/start`
+- `POST /api/auth/password/reset-request`
+- `POST /api/auth/password/reset-confirm`
 - `POST /api/newsletter/subscribe`
 - `POST /api/enrollments`
 - `GET|POST /api/wishlist`
@@ -53,4 +80,8 @@ python manage.py test
 
 ## Note
 
-`index.html` still uses its local `window.SkillForgeApp.request()` stub, so the Django backend is ready now but not yet wired into those frontend actions.
+`index.html` still remains untouched on disk.
+
+Authentication supports Django-backed users plus API session tokens, current-user lookup, logout, and a local-development password reset flow.
+
+The served page also injects a small runtime auth bridge that adds the logout button and connects the frontend auth UI to the Django session endpoints without modifying `index.html` on disk.
