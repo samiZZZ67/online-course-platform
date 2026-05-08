@@ -212,11 +212,10 @@ def auth_signup(request):
         return error_response("Password must be at least 8 characters.", 400)
 
     User = get_user_model()
-    if User.objects.filter(username=email).exists() or User.objects.filter(email=email).exists():
+    if User.objects.filter(email=email).exists():
         return error_response("An account with that email already exists.", 409)
 
     user = User.objects.create_user(
-        username=email,
         email=email,
         first_name=first_name,
         last_name=last_name,
@@ -248,7 +247,7 @@ def auth_login(request):
         return error_response("Password must be at least 8 characters.", 400)
 
     User = get_user_model()
-    user = User.objects.filter(username=email).first() or User.objects.filter(email=email).first()
+    user = User.objects.filter(email=email).first()
     if not user or not user.check_password(password):
         return error_response("Invalid email or password.", 401)
 
@@ -330,7 +329,7 @@ def auth_password_reset_request(request):
     if not validate_email(email):
         return error_response("A valid email address is required.", 400)
     User = get_user_model()
-    user = User.objects.filter(username=email).first() or User.objects.filter(email=email).first()
+    user = User.objects.filter(email=email).first()
     payload = {"ok": True, "message": "If that email exists, a password reset has been prepared."}
     if user:
         reset_token = create_password_reset_token(user)

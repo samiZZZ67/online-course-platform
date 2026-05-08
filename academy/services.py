@@ -38,6 +38,9 @@ def load_seed_data() -> dict[str, Any]:
 
 
 def user_role(user) -> str:
+    role = getattr(user, "role", "")
+    if role:
+        return str(role)
     return "admin" if getattr(user, "is_staff", False) else "student"
 
 
@@ -47,7 +50,12 @@ def serialize_user(user) -> dict[str, Any]:
         "firstName": user.first_name,
         "lastName": user.last_name,
         "email": user.email,
+        "username": getattr(user, "username", None),
+        "avatar": getattr(user, "avatar", ""),
+        "bio": getattr(user, "bio", ""),
         "role": user_role(user),
+        "verified": bool(getattr(user, "is_email_verified", False)),
+        "status": getattr(user, "status", "active"),
         "createdAt": isoformat_z(user.date_joined),
     }
 
@@ -147,17 +155,30 @@ def seed_database(force: bool = False) -> None:
     demo = seed.get("users", [{}])[0]
     demo_email = normalize_email(demo.get("email") or "demo@skillforge.local")
     demo_user, created = User.objects.get_or_create(
-        username=demo_email,
+        email=demo_email,
         defaults={
             "email": demo_email,
+            "username": "demo_learner",
             "first_name": demo.get("firstName", "Demo"),
             "last_name": demo.get("lastName", "Learner"),
+            "role": "student",
+            "status": "active",
+            "is_email_verified": True,
         },
     )
     if created or force:
         demo_user.email = demo_email
+        demo_user.username = demo_user.username or "demo_learner"
         demo_user.first_name = demo.get("firstName", "Demo")
         demo_user.last_name = demo.get("lastName", "Learner")
+        if hasattr(demo_user, "role"):
+            demo_user.role = "student"
+        if hasattr(demo_user, "status"):
+            demo_user.status = "active"
+        if hasattr(demo_user, "is_email_verified"):
+            demo_user.is_email_verified = True
+        if hasattr(demo_user, "email_verified_at") and not demo_user.email_verified_at:
+            demo_user.email_verified_at = now()
         demo_user.set_password("skillforge123")
         demo_user.save()
 

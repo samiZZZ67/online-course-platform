@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
 from . import models
@@ -15,6 +16,9 @@ class SkillForgeApiTests(TestCase):
 
     def setUp(self):
         self.client = Client()
+
+    def test_custom_user_model_is_active(self):
+        self.assertEqual(get_user_model()._meta.label, "accounts.User")
 
     def test_health_and_courses_endpoints_are_available(self):
         admin_response = self.client.get("/admin/login/")

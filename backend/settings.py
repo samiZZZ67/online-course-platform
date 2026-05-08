@@ -8,6 +8,7 @@ DEBUG = True
 ALLOWED_HOSTS = ["127.0.0.1", "localhost", "testserver", "0.0.0.0", "[::1]"]
 
 INSTALLED_APPS = [
+    "accounts.apps.AccountsConfig",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -60,3 +61,4 @@ USE_TZ = True
 APPEND_SLASH = False
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STATIC_URL = "static/"
+AUTH_USER_MODEL = "accounts.User"
