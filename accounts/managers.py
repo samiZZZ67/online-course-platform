@@ -13,8 +13,9 @@ class UserManager(BaseUserManager):
         if not email:
             raise ValueError("Email is required.")
         email = self._normalize_email(email)
-        extra_fields.setdefault("role", "student")
+        role = extra_fields.setdefault("role", "student")
         extra_fields.setdefault("status", "pending_verification")
+        extra_fields.setdefault("two_factor_enabled", role in {"instructor", "admin"})
         user = self.model(email=email, **extra_fields)
         if password:
             user.set_password(password)
@@ -43,4 +44,3 @@ class UserManager(BaseUserManager):
             user.email_verified_at = timezone.now()
             user.save(update_fields=["email_verified_at"])
         return user
-

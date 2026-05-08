@@ -87,6 +87,20 @@
     return !!state.accessToken && url.indexOf("/api/") === 0 && url !== "/api/auth/refresh";
   }
 
+  function getCookie(name) {
+    const pattern = new RegExp("(?:^|; )" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "=([^;]*)");
+    const match = document.cookie.match(pattern);
+    return match ? decodeURIComponent(match[1]) : "";
+  }
+
+  function getCsrfToken() {
+    return getCookie("csrftoken");
+  }
+
+  function isUnsafeMethod(method) {
+    return ["POST", "PUT", "PATCH", "DELETE"].indexOf(String(method || "GET").toUpperCase()) >= 0;
+  }
+
   function canRetryWithRefresh(url) {
     if (url !== "/api/auth/me" && !state.session && !state.authenticated) {
       return false;
@@ -117,6 +131,12 @@
     }
     if (init.body && !init.headers["Content-Type"]) {
       init.headers["Content-Type"] = "application/json";
+    }
+    if (isUnsafeMethod(init.method)) {
+      const csrfToken = getCsrfToken();
+      if (csrfToken && !init.headers["X-CSRFToken"]) {
+        init.headers["X-CSRFToken"] = csrfToken;
+      }
     }
     const response = await fetch(url, init);
     let data = {};
@@ -556,6 +576,38 @@
           : (state.pendingSignupRole === "instructor" ? "Create Instructor Account ->" : "Create Account ->");
       }
       return;
+    }
+
+    if (result.data.twoFactorRequired) {
+      const promptText = result.data.otpCode
+        ? "Enter the 6-digit verification code from your email. Dev code: " + result.data.otpCode
+        : "Enter the 6-digit verification code from your email.";
+      setInlineStatus("success", "Verification required. Enter the code to finish signing in.");
+      const enteredCode = window.prompt(promptText, "");
+      if (!enteredCode) {
+        setInlineStatus("error", "A verification code is required to finish signing in.");
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = "Sign In ->";
+        }
+        return;
+      }
+      const verifyResult = await requestJson("/api/auth/2fa/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          challengeId: result.data.challengeId,
+          code: enteredCode.trim()
+        })
+      });
+      if (!verifyResult.response.ok) {
+        setInlineStatus("error", verifyResult.data.message || "Unable to verify the sign-in code.");
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = "Sign In ->";
+        }
+        return;
+      }
+      result.data = verifyResult.data;
     }
 
     setAuthState(result.data);

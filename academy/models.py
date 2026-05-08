@@ -29,9 +29,37 @@ class UserEmailMixin(models.Model):
         abstract = True
 
 
+class CourseCategory(TimeStampedModel):
+    slug = models.SlugField(max_length=32, unique=True)
+    code = models.CharField(max_length=8, unique=True)
+    label = models.CharField(max_length=128)
+    badge_class = models.CharField(max_length=64, blank=True)
+    gradient = models.CharField(max_length=255, blank=True)
+    description = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0, db_index=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    requirements = models.JSONField(default=list, blank=True)
+    learn = models.JSONField(default=list, blank=True)
+    resources = models.JSONField(default=list, blank=True)
+    qa = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ["sort_order", "label"]
+
+    def __str__(self) -> str:
+        return self.label
+
+
 class Course(TimeStampedModel):
     slug = models.SlugField(max_length=140, unique=True)
     category = models.CharField(max_length=32, db_index=True)
+    category_ref = models.ForeignKey(
+        CourseCategory,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="courses",
+    )
     mark = models.CharField(max_length=8, default="CR")
     title = models.CharField(max_length=255)
     instructor_name = models.CharField(max_length=255)
@@ -79,6 +107,58 @@ class Course(TimeStampedModel):
         return self.title
 
 
+class CourseModule(TimeStampedModel):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="course_modules")
+    title = models.CharField(max_length=255)
+    summary = models.TextField(blank=True)
+    duration_label = models.CharField(max_length=32, blank=True)
+    position = models.PositiveIntegerField(default=1, db_index=True)
+    is_published = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["position", "pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["course", "position"], name="unique_course_module_position"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.course.title}: {self.title}"
+
+
+class CourseLesson(TimeStampedModel):
+    TYPE_VIDEO = "video"
+    TYPE_QUIZ = "quiz"
+    TYPE_PDF = "pdf"
+    TYPE_ASSIGNMENT = "assignment"
+    TYPE_CHOICES = [
+        (TYPE_VIDEO, "Video"),
+        (TYPE_QUIZ, "Quiz"),
+        (TYPE_PDF, "PDF"),
+        (TYPE_ASSIGNMENT, "Assignment"),
+    ]
+
+    module = models.ForeignKey(CourseModule, on_delete=models.CASCADE, related_name="lessons")
+    lesson_key = models.SlugField(max_length=180, unique=True, db_index=True)
+    title = models.CharField(max_length=255)
+    summary = models.TextField(blank=True)
+    duration_label = models.CharField(max_length=32, blank=True)
+    content_type = models.CharField(max_length=24, choices=TYPE_CHOICES, default=TYPE_VIDEO)
+    position = models.PositiveIntegerField(default=1, db_index=True)
+    is_free_preview = models.BooleanField(default=False)
+    is_published = models.BooleanField(default=True)
+    asset_url = models.URLField(max_length=500, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["module__position", "position", "pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["module", "position"], name="unique_course_lesson_position"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.module.course.title}: {self.title}"
+
+
 class Coupon(TimeStampedModel):
     TYPE_PERCENT = "percent"
     TYPE_FIXED = "fixed"
@@ -113,13 +193,21 @@ class AuthAuditLog(TimeStampedModel):
     ACTION_CHOICES = [
         ("signup", "Signup"),
         ("login", "Login"),
+        ("login_failed", "Login Failed"),
+        ("two_factor.challenge", "Two-Factor Challenge"),
+        ("two_factor.verify", "Two-Factor Verify"),
+        ("two_factor.failed", "Two-Factor Failed"),
         ("refresh", "Refresh"),
         ("refresh.reuse_detected", "Refresh Reuse Detected"),
         ("logout", "Logout"),
         ("verify_email.request", "Verify Email Request"),
         ("verify_email.confirm", "Verify Email Confirm"),
+        ("password_change", "Password Change"),
         ("password_reset.request", "Password Reset Request"),
         ("password_reset.confirm", "Password Reset Confirm"),
+        ("admin.user_suspend", "Admin User Suspend"),
+        ("admin.user_verify", "Admin User Verify"),
+        ("admin.user_change_role", "Admin User Change Role"),
     ]
 
     user = models.ForeignKey(
@@ -181,8 +269,17 @@ class PasswordResetToken(models.Model):
 
 class Enrollment(UserEmailMixin):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="enrollments")
+    current_lesson = models.ForeignKey(
+        CourseLesson,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="current_enrollments",
+    )
     status = models.CharField(max_length=32, default="active")
     progress_percent = models.PositiveIntegerField(default=0)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    last_activity_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -190,6 +287,23 @@ class Enrollment(UserEmailMixin):
             models.UniqueConstraint(fields=["email", "course"], name="unique_enrollment_email_course"),
         ]
         ordering = ["-created_at"]
+
+
+class LessonProgress(UserEmailMixin):
+    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name="lesson_progress_items")
+    lesson = models.ForeignKey(CourseLesson, on_delete=models.CASCADE, related_name="lesson_progress_items")
+    status = models.CharField(max_length=32, default="not_started")
+    progress_percent = models.PositiveIntegerField(default=0)
+    started_at = models.DateTimeField(default=timezone.now)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    last_position_seconds = models.PositiveIntegerField(default=0)
+    last_viewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["lesson__module__position", "lesson__position", "pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["enrollment", "lesson"], name="unique_enrollment_lesson_progress"),
+        ]
 
 
 class WishlistItem(UserEmailMixin):

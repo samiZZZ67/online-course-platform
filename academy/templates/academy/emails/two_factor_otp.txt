@@ -1,0 +1,6 @@
+SkillForge two-factor verification code.
+
+Use this code to complete your sign-in:
+{{ otp_code }}
+
+This code expires in {{ expires_minutes }} minutes.

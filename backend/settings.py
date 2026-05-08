@@ -15,6 +15,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "rest_framework",
+    "drf_spectacular",
     "academy.apps.AcademyConfig",
 ]
 
@@ -23,7 +25,9 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "academy.middleware.SecurityHeadersMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "academy.middleware.JwtAuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -70,3 +74,33 @@ STATIC_URL = "static/"
 AUTH_USER_MODEL = "accounts.User"
 DEFAULT_FROM_EMAIL = "noreply@skillforge.local"
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = not DEBUG
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "SAMEORIGIN"
+AUTH_RATE_LIMITS = {
+    "signup.ip": (8, 15 * 60),
+    "signup.email": (4, 15 * 60),
+    "login.ip": (12, 15 * 60),
+    "login.email": (8, 15 * 60),
+    "verify.request.ip": (6, 60 * 60),
+    "verify.request.email": (3, 60 * 60),
+    "2fa.challenge.ip": (10, 15 * 60),
+    "2fa.verify.challenge": (8, 15 * 60),
+    "password_reset.ip": (6, 60 * 60),
+    "password_reset.email": (3, 60 * 60),
+}
+REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+SPECTACULAR_SETTINGS = {
+    "TITLE": "SkillForge Authentication API",
+    "DESCRIPTION": "OpenAPI documentation for the SkillForge authentication, profile, and admin identity APIs.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+}

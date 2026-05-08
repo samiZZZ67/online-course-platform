@@ -32,6 +32,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         ADMIN = "admin", "Admin"
         SUPPORT = "support", "Support"
 
+    class TwoFactorMethod(models.TextChoices):
+        EMAIL_OTP = "email_otp", "Email OTP"
+        AUTHENTICATOR_APP = "authenticator_app", "Authenticator App"
+        SMS_OTP = "sms_otp", "SMS OTP"
+
     class Status(models.TextChoices):
         PENDING_VERIFICATION = "pending_verification", "Pending verification"
         ACTIVE = "active", "Active"
@@ -53,6 +58,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     role = models.CharField(max_length=24, choices=Role.choices, default=Role.STUDENT, db_index=True)
     avatar = models.URLField(max_length=500, blank=True)
     bio = models.TextField(blank=True)
+    social_links = models.JSONField(default=dict, blank=True)
     is_email_verified = models.BooleanField(default=False, db_index=True)
     email_verified_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(
@@ -60,6 +66,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         choices=Status.choices,
         default=Status.PENDING_VERIFICATION,
         db_index=True,
+    )
+    two_factor_enabled = models.BooleanField(default=False, db_index=True)
+    two_factor_method = models.CharField(
+        max_length=32,
+        choices=TwoFactorMethod.choices,
+        default=TwoFactorMethod.EMAIL_OTP,
     )
     is_active = models.BooleanField(default=True, db_index=True)
     is_staff = models.BooleanField(default=False, db_index=True)
@@ -118,6 +130,8 @@ class User(AbstractBaseUser, PermissionsMixin):
             self.email_verified_at = timezone.now()
         if self.role == self.Role.ADMIN and not self.is_staff:
             self.is_staff = True
+        if self.role in {self.Role.INSTRUCTOR, self.Role.ADMIN} and not self.two_factor_enabled:
+            self.two_factor_enabled = True
         super().save(*args, **kwargs)
 
 
@@ -206,3 +220,27 @@ class EmailVerificationToken(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Email verification token for {self.user.email}"
+
+
+class TwoFactorChallenge(TimeStampedModel):
+    class Method(models.TextChoices):
+        EMAIL_OTP = "email_otp", "Email OTP"
+        AUTHENTICATOR_APP = "authenticator_app", "Authenticator App"
+        SMS_OTP = "sms_otp", "SMS OTP"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="two_factor_challenges")
+    method = models.CharField(max_length=32, choices=Method.choices, default=Method.EMAIL_OTP)
+    code_hash = models.CharField(max_length=64, db_index=True)
+    delivery_target = models.CharField(max_length=255, blank=True)
+    expires_at = models.DateTimeField(db_index=True)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    max_attempts = models.PositiveSmallIntegerField(default=5)
+    created_ip = models.CharField(max_length=64, blank=True)
+    created_user_agent = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"2FA challenge for {self.user.email}"

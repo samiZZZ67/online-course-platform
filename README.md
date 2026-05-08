@@ -27,6 +27,8 @@ The domain models, admin registrations, tests, static assets, and seed logic now
 Authentication design for the next implementation step is documented in `docs/authentication-architecture.md`.
 The custom user model design is documented in `docs/custom-user-model.md`.
 The role-based access control design is documented in `docs/rbac-architecture.md`.
+The authentication API reference is documented in `docs/authentication-api.md`.
+The final authentication flow checklist is documented in `docs/final-authentication-flow.md`.
 
 ## Test
 
@@ -50,6 +52,13 @@ python manage.py createsuperuser
 
 Then sign in at `http://localhost:3000/admin/`.
 
+## API Docs
+
+- Swagger UI: `http://localhost:3000/api/docs/swagger/`
+- ReDoc: `http://localhost:3000/api/docs/redoc/`
+- OpenAPI JSON: `http://localhost:3000/api/docs/openapi.json`
+- OpenAPI YAML: `http://localhost:3000/api/docs/openapi.yaml`
+
 ## Implemented API Surface
 
 - `POST /api/auth/login`
@@ -62,6 +71,20 @@ Then sign in at `http://localhost:3000/admin/`.
 - `POST /api/auth/oauth/start`
 - `POST /api/auth/password/reset-request`
 - `POST /api/auth/password/reset-confirm`
+- `POST /api/register`
+- `POST /api/login`
+- `POST /api/refresh-token`
+- `POST /api/forgot-password`
+- `GET|POST /api/reset-password`
+- `GET|POST /api/verify-email`
+- `GET /api/profile`
+- `PUT|PATCH /api/profile/update`
+- `POST /api/change-password`
+- `POST /api/logout`
+- `GET /api/users`
+- `PATCH /api/users/suspend`
+- `PATCH /api/users/verify`
+- `PATCH /api/users/change-role`
 - `POST /api/newsletter/subscribe`
 - `POST /api/enrollments`
 - `GET|POST /api/wishlist`
@@ -74,6 +97,7 @@ Then sign in at `http://localhost:3000/admin/`.
 - `POST /api/instructor/courses/drafts`
 - `GET|POST /api/instructor/courses`
 - `POST /api/instructor/courses/thumbnail`
+- `GET /api/categories`
 - `GET /api/courses`
 - `GET /api/courses/:id`
 - `GET|POST /api/courses/:id/resources`
@@ -91,3 +115,9 @@ Authentication now uses short-lived JWT access tokens plus rotating refresh toke
 The served page also injects a small runtime auth bridge that adds the logout button, keeps the access token in memory, restores sessions through `/api/auth/refresh`, and connects the frontend auth UI to Django without modifying `index.html` on disk.
 
 Registration now validates passwords with Django validators, generates email-verification tokens, sends verification emails through Django mail, and rate-limits signup and verification-related requests.
+
+The backend now also exposes mobile-friendly auth aliases, profile management APIs, admin user-management APIs, console-backed verification and password-reset emails, and JWT request middleware for protected API routes.
+
+Authentication is now documented through OpenAPI plus Swagger/ReDoc, and the backend is ready to move into course-management work once the auth contract is considered stable.
+
+Course management now uses real Django models for categories, courses, modules, lessons, enrollments, and lesson-level progress tracking while preserving the existing frontend-facing `/api/courses` and `/api/enrollments` contract.

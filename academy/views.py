@@ -5,12 +5,20 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any, Iterable
 
-from accounts.permissions import can_manage_instructor_content, is_public_signup_role
+from accounts.permissions import (
+    can_access_admin_dashboard,
+    can_configure_platform,
+    can_manage_instructor_content,
+    is_public_signup_role,
+    user_has_role,
+)
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
+from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 
 from . import models
@@ -19,6 +27,7 @@ from .services import (
     AuthTokenError,
     RateLimitExceeded,
     RefreshTokenReuseDetected,
+    TwoFactorChallengeError,
     VerificationTokenError,
     active_notifications_for,
     clear_auth_cookie,
@@ -32,19 +41,26 @@ from .services import (
     get_authenticated_context,
     issue_email_verification,
     issue_auth_session,
+    issue_two_factor_challenge,
     isoformat_z,
+    lesson_by_key,
+    list_course_categories,
     normalize_username,
     now,
+    recalculate_enrollment_progress,
+    requires_two_factor,
     rotate_refresh_session,
     resolve_actor,
     revoke_sessions,
     seed_database,
+    send_password_reset_email,
     serialize_enrollment,
     serialize_course,
     serialize_session,
     serialize_user,
     set_auth_cookie,
     sync_student_profile_metrics,
+    verify_two_factor_challenge,
 )
 from .utils import DEFAULT_ACTOR_EMAIL, build_token, format_number, normalize_email, validate_email
 
@@ -62,7 +78,7 @@ def ensure_seeded():
 def add_cors_headers(response: HttpResponse) -> HttpResponse:
     response["Access-Control-Allow-Origin"] = "*"
     response["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-CSRFToken"
     return response
 
 
@@ -98,6 +114,38 @@ def require_instructor_access(user):
     return None
 
 
+def require_authenticated_access(user):
+    if not user:
+        return error_response("Authentication required.", 401)
+    return None
+
+
+def require_admin_access(user, *, write: bool = False):
+    if not user:
+        return error_response("Authentication required.", 401)
+    if write:
+        if not (user_has_role(user, "admin") or can_configure_platform(user)):
+            return error_response("Admin access is required for this action.", 403)
+        return None
+    if not can_access_admin_dashboard(user):
+        return error_response("Admin access is required for this action.", 403)
+    return None
+
+
+def require_course_owner_access(user, course):
+    if access_error := require_instructor_access(user):
+        return access_error
+    if not course:
+        return error_response("Course not found", 404)
+    if can_access_admin_dashboard(user):
+        return None
+    if getattr(course, "created_by_id", None) and str(course.created_by_id) != str(user.pk):
+        return error_response("You can only manage courses you created.", 403)
+    if not getattr(course, "created_by_id", None):
+        return error_response("Only admins can modify platform-seeded courses.", 403)
+    return None
+
+
 def guard_method(request, methods: Iterable[str]) -> HttpResponse | None:
     if request.method == "OPTIONS":
         return options_response()
@@ -129,6 +177,7 @@ def parse_request_data(request) -> dict[str, Any]:
 def index(request):
     if request.method not in {"GET", "HEAD"}:
         return error_response("Method not allowed", 405)
+    get_token(request)
     html = INDEX_PATH.read_text(encoding="utf-8")
     script_tag = '<script src="/frontend-auth.js"></script>'
     if script_tag not in html:
@@ -172,11 +221,52 @@ def health(request):
 
 
 @csrf_exempt
+def course_categories(request):
+    if response := guard_method(request, {"GET"}):
+        return response
+    ensure_seeded()
+    categories = []
+    for category in list_course_categories():
+        categories.append(
+            {
+                "id": category.slug,
+                "slug": category.slug,
+                "code": category.code,
+                "label": category.label,
+                "badgeClass": category.badge_class,
+                "gradient": category.gradient,
+                "description": category.description,
+                "courseCount": category.courses.count(),
+                "requirements": category.requirements,
+                "learn": category.learn,
+                "resources": category.resources,
+                "qa": category.qa,
+            }
+        )
+    return json_response({"ok": True, "count": len(categories), "categories": categories})
+
+
+@csrf_exempt
 def course_list(request):
     if response := guard_method(request, {"GET"}):
         return response
     ensure_seeded()
-    courses = [serialize_course(course) for course in models.Course.objects.all()]
+    queryset = models.Course.objects.select_related("category_ref", "created_by").prefetch_related("course_modules__lessons").all()
+    category_filter = str(request.GET.get("category", "")).strip().lower()
+    search_query = str(request.GET.get("q", "")).strip()
+    instructor_filter = str(request.GET.get("instructor", "")).strip()
+    if category_filter:
+        queryset = queryset.filter(category=category_filter)
+    if instructor_filter:
+        queryset = queryset.filter(instructor_name__icontains=instructor_filter)
+    if search_query:
+        queryset = queryset.filter(
+            Q(title__icontains=search_query)
+            | Q(overview__icontains=search_query)
+            | Q(instructor_name__icontains=search_query)
+            | Q(track__icontains=search_query)
+        )
+    courses = [serialize_course(course) for course in queryset]
     return json_response({"ok": True, "count": len(courses), "courses": courses})
 
 
@@ -188,7 +278,12 @@ def course_detail(request, course_id: str):
     course = course_by_slug_or_404(course_id)
     if not course:
         return error_response("Course not found", 404)
-    return json_response({"ok": True, "course": serialize_course(course)})
+    _user, email, _session = resolve_actor(request, query=request.GET.dict())
+    enrollment = models.Enrollment.objects.select_related("course", "current_lesson").filter(email=email, course=course).first()
+    payload = {"ok": True, "course": serialize_course(course)}
+    if enrollment:
+        payload["enrollment"] = serialize_enrollment(enrollment)
+    return json_response(payload)
 
 
 @csrf_exempt
@@ -228,6 +323,26 @@ def _auth_success_response(user, access_token, refresh_token, session, status=20
         payload.update(extra)
     response = json_response(payload, status=status)
     return set_auth_cookie(response, refresh_token, expires_at=session.expires_at)
+
+
+def _two_factor_challenge_response(user, challenge, *, otp_code: str | None = None):
+    payload = {
+        "ok": True,
+        "authenticated": False,
+        "twoFactorRequired": True,
+        "challengeId": str(challenge.pk),
+        "method": challenge.method,
+        "expiresAt": isoformat_z(challenge.expires_at),
+        "pendingUser": {
+            "email": user.email,
+            "role": user.role,
+            "twoFactorMethod": challenge.method,
+        },
+        "message": "A verification code was sent to complete sign-in.",
+    }
+    if otp_code:
+        payload["otpCode"] = otp_code
+    return json_response(payload, status=202)
 
 
 @csrf_exempt
@@ -326,9 +441,17 @@ def auth_login(request):
     User = get_user_model()
     user = User.objects.filter(email=email).first()
     if not user or not user.check_password(password):
+        models.AuthAuditLog.objects.create(user=user, email=email or DEFAULT_ACTOR_EMAIL, action="login_failed")
         return error_response("Invalid email or password.", 401)
     if not user.is_active or getattr(user, "status", "") in {"suspended", "deactivated"}:
         return error_response("This account is not active.", 403)
+    if requires_two_factor(user):
+        try:
+            enforce_rate_limit("2fa.challenge.ip", ip_address, message="Too many verification code requests from this address. Please try again later.")
+        except RateLimitExceeded as exc:
+            return rate_limit_response(exc)
+        otp_code, challenge, _delivery_target = issue_two_factor_challenge(user, request)
+        return _two_factor_challenge_response(user, challenge, otp_code=otp_code if should_expose_dev_tokens(request) else None)
 
     access_token, refresh_token, session = issue_auth_session(user, request)
     models.AuthAuditLog.objects.create(user=user, email=user.email or email, action="login")
@@ -348,6 +471,29 @@ def auth_refresh(request):
     except AuthTokenError as exc:
         response = error_response(str(exc), 401)
         return clear_auth_cookie(response)
+    return _auth_success_response(user, access_token, refresh_token, session)
+
+
+@csrf_exempt
+def auth_two_factor_verify(request):
+    if response := guard_method(request, {"POST"}):
+        return response
+    data = parse_request_data(request)
+    challenge_id = str(data.get("challengeId", "")).strip()
+    otp_code = str(data.get("otpCode") or data.get("code") or "").strip()
+    if not challenge_id:
+        return error_response("challengeId is required.", 400)
+    if not otp_code:
+        return error_response("otpCode is required.", 400)
+    try:
+        enforce_rate_limit("2fa.verify.challenge", challenge_id, message="Too many invalid verification attempts. Please request a new code.")
+        user, _challenge = verify_two_factor_challenge(challenge_id, otp_code)
+    except RateLimitExceeded as exc:
+        return rate_limit_response(exc)
+    except TwoFactorChallengeError as exc:
+        return error_response(str(exc), 400)
+    access_token, refresh_token, session = issue_auth_session(user, request)
+    models.AuthAuditLog.objects.create(user=user, email=user.email or DEFAULT_ACTOR_EMAIL, action="login")
     return _auth_success_response(user, access_token, refresh_token, session)
 
 
@@ -490,25 +636,25 @@ def auth_password_reset_request(request):
     payload = {"ok": True, "message": "If that email exists, a password reset has been prepared."}
     if user:
         reset_token = create_password_reset_token(user)
+        reset_url = send_password_reset_email(user, request, reset_token.token)
         models.AuthAuditLog.objects.create(user=user, email=email, action="password_reset.request")
-        payload["resetToken"] = reset_token.token
+        payload["emailSent"] = True
         payload["expiresAt"] = isoformat_z(reset_token.expires_at)
+        if should_expose_dev_tokens(request):
+            payload["resetToken"] = reset_token.token
+            payload["resetUrl"] = reset_url
     return json_response(payload)
 
 
 @csrf_exempt
 def auth_password_reset_confirm(request):
-    if response := guard_method(request, {"POST"}):
+    if response := guard_method(request, {"GET", "POST"}):
         return response
     data = parse_request_data(request)
-    token = str(data.get("token", "")).strip()
+    token = str(data.get("token") or request.GET.get("token") or "").strip()
     password = str(data.get("password", ""))
     if not token:
         return error_response("Reset token is required.", 400)
-    try:
-        validate_password(password)
-    except ValidationError as exc:
-        return error_response(exc.messages[0], 400)
     reset_record = models.PasswordResetToken.objects.select_related("user").filter(token=token).first()
     if not reset_record:
         return error_response("Reset token is invalid.", 400)
@@ -516,6 +662,19 @@ def auth_password_reset_confirm(request):
         return error_response("Reset token has already been used.", 409)
     if reset_record.expires_at <= now():
         return error_response("Reset token has expired.", 410)
+    if request.method == "GET":
+        return json_response(
+            {
+                "ok": True,
+                "valid": True,
+                "email": reset_record.user.email,
+                "expiresAt": isoformat_z(reset_record.expires_at),
+            }
+        )
+    try:
+        validate_password(password, reset_record.user)
+    except ValidationError as exc:
+        return error_response(exc.messages[0], 400)
 
     user = reset_record.user
     user.set_password(password)
@@ -527,6 +686,257 @@ def auth_password_reset_confirm(request):
     access_token, refresh_token, session = issue_auth_session(user, request)
     models.AuthAuditLog.objects.create(user=user, email=user.email or DEFAULT_ACTOR_EMAIL, action="password_reset.confirm")
     return _auth_success_response(user, access_token, refresh_token, session)
+
+
+@csrf_exempt
+def public_register(request):
+    return auth_signup(request)
+
+
+@csrf_exempt
+def public_login(request):
+    return auth_login(request)
+
+
+@csrf_exempt
+def public_refresh_token(request):
+    return auth_refresh(request)
+
+
+@csrf_exempt
+def public_forgot_password(request):
+    return auth_password_reset_request(request)
+
+
+@csrf_exempt
+def public_reset_password(request):
+    return auth_password_reset_confirm(request)
+
+
+@csrf_exempt
+def public_verify_email(request):
+    data = parse_request_data(request)
+    if str(data.get("token") or request.GET.get("token") or "").strip():
+        return auth_verify_email_confirm(request)
+    return auth_verify_email_request(request)
+
+
+@csrf_exempt
+def profile_detail(request):
+    if response := guard_method(request, {"GET"}):
+        return response
+    user, session = get_authenticated_context(request)
+    if access_error := require_authenticated_access(user):
+        return access_error
+    return json_response({"ok": True, "user": serialize_user(user), "session": serialize_session(session)})
+
+
+@csrf_exempt
+def profile_update(request):
+    if response := guard_method(request, {"PUT", "PATCH"}):
+        return response
+    data = parse_request_data(request)
+    user, _session = get_authenticated_context(request, data)
+    if access_error := require_authenticated_access(user):
+        return access_error
+
+    updates: list[str] = []
+    if "firstName" in data:
+        user.first_name = str(data.get("firstName", "")).strip()
+        updates.append("first_name")
+    if "lastName" in data:
+        user.last_name = str(data.get("lastName", "")).strip()
+        updates.append("last_name")
+    if "avatar" in data:
+        user.avatar = str(data.get("avatar", "")).strip()
+        updates.append("avatar")
+    if "bio" in data:
+        user.bio = str(data.get("bio", "")).strip()
+        updates.append("bio")
+    if "username" in data:
+        requested_username = normalize_username(data.get("username"))
+        if str(data.get("username", "")).strip() and not requested_username:
+            return error_response("Username must contain letters, numbers, underscores, or dots.", 400)
+        if requested_username and get_user_model().objects.exclude(pk=user.pk).filter(username=requested_username).exists():
+            return error_response("That username is already taken.", 409)
+        user.username = requested_username or None
+        updates.append("username")
+    if "twoFactorEnabled" in data:
+        requested_two_factor_enabled = data.get("twoFactorEnabled")
+        should_enable = requested_two_factor_enabled if isinstance(requested_two_factor_enabled, bool) else str(requested_two_factor_enabled).strip().lower() in {"1", "true", "yes", "on"}
+        if not should_enable and user_has_role(user, "instructor", "admin"):
+            return error_response("Two-factor authentication is required for instructor and admin accounts.", 400)
+        user.two_factor_enabled = should_enable
+        updates.append("two_factor_enabled")
+    if "twoFactorMethod" in data:
+        requested_method = str(data.get("twoFactorMethod", "")).strip().lower()
+        if requested_method and requested_method != user.TwoFactorMethod.EMAIL_OTP:
+            return error_response("Only email_otp is currently supported for two-factor authentication.", 400)
+        user.two_factor_method = requested_method or user.TwoFactorMethod.EMAIL_OTP
+        updates.append("two_factor_method")
+    if updates:
+        updates.append("updated_at")
+        user.save(update_fields=updates)
+
+    if "socialLinks" in data and isinstance(data.get("socialLinks"), dict):
+        user.social_links = data.get("socialLinks")
+        user.save(update_fields=["social_links", "updated_at"])
+
+    instructor_payload = data.get("instructorProfile") if isinstance(data.get("instructorProfile"), dict) else data
+    if user_has_role(user, "instructor", "admin"):
+        profile = user.ensure_instructor_profile()
+        profile_updates: list[str] = []
+        if "expertise" in instructor_payload:
+            expertise = instructor_payload.get("expertise") or []
+            profile.expertise = expertise if isinstance(expertise, list) else [str(expertise)]
+            profile_updates.append("expertise")
+        if "biography" in instructor_payload:
+            profile.biography = str(instructor_payload.get("biography", "")).strip()
+            profile_updates.append("biography")
+        if "socialLinks" in instructor_payload and isinstance(instructor_payload.get("socialLinks"), dict):
+            profile.social_links = instructor_payload.get("socialLinks")
+            profile_updates.append("social_links")
+        if profile_updates:
+            profile_updates.append("updated_at")
+            profile.save(update_fields=profile_updates)
+
+    return json_response({"ok": True, "user": serialize_user(get_user_model().objects.get(pk=user.pk))})
+
+
+@csrf_exempt
+def change_password(request):
+    if response := guard_method(request, {"POST"}):
+        return response
+    data = parse_request_data(request)
+    user, _session = get_authenticated_context(request, data)
+    if access_error := require_authenticated_access(user):
+        return access_error
+    current_password = str(data.get("currentPassword") or data.get("oldPassword") or "")
+    new_password = str(data.get("newPassword") or data.get("password") or "")
+    if not user.check_password(current_password):
+        return error_response("Current password is incorrect.", 400)
+    try:
+        validate_password(new_password, user)
+    except ValidationError as exc:
+        return error_response(exc.messages[0], 400)
+    user.set_password(new_password)
+    user.last_password_changed_at = now()
+    user.save(update_fields=["password", "last_password_changed_at", "updated_at"])
+    revoke_sessions(user, all_sessions=True)
+    access_token, refresh_token, session = issue_auth_session(user, request)
+    models.AuthAuditLog.objects.create(user=user, email=user.email or DEFAULT_ACTOR_EMAIL, action="password_change")
+    return _auth_success_response(user, access_token, refresh_token, session)
+
+
+def _admin_target_user(data):
+    user_id = str(data.get("userId") or "").strip()
+    email = normalize_email(data.get("email"))
+    queryset = get_user_model().objects.all()
+    if user_id:
+        return queryset.filter(pk=user_id).first()
+    if email:
+        return queryset.filter(email=email).first()
+    return None
+
+
+@csrf_exempt
+def admin_users(request):
+    if response := guard_method(request, {"GET"}):
+        return response
+    user, _session = get_authenticated_context(request)
+    if access_error := require_admin_access(user):
+        return access_error
+    queryset = get_user_model().objects.all().order_by("-date_joined")
+    query = str(request.GET.get("q", "")).strip()
+    role = str(request.GET.get("role", "")).strip().lower()
+    status = str(request.GET.get("status", "")).strip().lower()
+    if query:
+        queryset = queryset.filter(Q(email__icontains=query) | Q(username__icontains=query) | Q(first_name__icontains=query) | Q(last_name__icontains=query))
+    if role:
+        queryset = queryset.filter(role=role)
+    if status:
+        queryset = queryset.filter(status=status)
+    users = [serialize_user(item) for item in queryset]
+    return json_response({"ok": True, "count": len(users), "users": users})
+
+
+@csrf_exempt
+def admin_users_suspend(request):
+    if response := guard_method(request, {"PATCH"}):
+        return response
+    data = parse_request_data(request)
+    user, _session = get_authenticated_context(request, data)
+    if access_error := require_admin_access(user, write=True):
+        return access_error
+    target = _admin_target_user(data)
+    if not target:
+        return error_response("User not found.", 404)
+    suspend_flag = data.get("suspended")
+    should_suspend = suspend_flag if isinstance(suspend_flag, bool) else str(suspend_flag).lower() != "false"
+    target.is_active = not should_suspend
+    target.status = target.Status.SUSPENDED if should_suspend else (target.Status.ACTIVE if target.is_email_verified else target.Status.PENDING_VERIFICATION)
+    target.save(update_fields=["is_active", "status", "updated_at"])
+    models.AuthAuditLog.objects.create(
+        user=target,
+        email=target.email or DEFAULT_ACTOR_EMAIL,
+        action="admin.user_suspend",
+        metadata={"suspended": should_suspend, "actorId": str(user.pk)},
+    )
+    return json_response({"ok": True, "suspended": should_suspend, "user": serialize_user(target)})
+
+
+@csrf_exempt
+def admin_users_verify(request):
+    if response := guard_method(request, {"PATCH"}):
+        return response
+    data = parse_request_data(request)
+    user, _session = get_authenticated_context(request, data)
+    if access_error := require_admin_access(user, write=True):
+        return access_error
+    target = _admin_target_user(data)
+    if not target:
+        return error_response("User not found.", 404)
+    target.mark_email_verified()
+    models.AuthAuditLog.objects.create(
+        user=target,
+        email=target.email or DEFAULT_ACTOR_EMAIL,
+        action="admin.user_verify",
+        metadata={"actorId": str(user.pk)},
+    )
+    return json_response({"ok": True, "verified": True, "user": serialize_user(target)})
+
+
+@csrf_exempt
+def admin_users_change_role(request):
+    if response := guard_method(request, {"PATCH"}):
+        return response
+    data = parse_request_data(request)
+    user, _session = get_authenticated_context(request, data)
+    if access_error := require_admin_access(user, write=True):
+        return access_error
+    target = _admin_target_user(data)
+    if not target:
+        return error_response("User not found.", 404)
+    requested_role = str(data.get("role", "")).strip().lower()
+    allowed_roles = {choice for choice, _label in get_user_model().Role.choices}
+    if requested_role not in allowed_roles:
+        return error_response("A valid role is required.", 400)
+    previous_role = target.role
+    target.role = requested_role
+    if not target.is_superuser:
+        target.is_staff = requested_role == target.Role.ADMIN
+    target.save(update_fields=["role", "is_staff", "updated_at"])
+    if requested_role == target.Role.STUDENT:
+        target.ensure_student_profile()
+    if requested_role == target.Role.INSTRUCTOR:
+        target.ensure_instructor_profile()
+    models.AuthAuditLog.objects.create(
+        user=target,
+        email=target.email or DEFAULT_ACTOR_EMAIL,
+        action="admin.user_change_role",
+        metadata={"actorId": str(user.pk), "previousRole": previous_role, "newRole": requested_role},
+    )
+    return json_response({"ok": True, "user": serialize_user(target)})
 
 
 @csrf_exempt
@@ -563,7 +973,11 @@ def enrollments(request):
     if request.method == "GET":
         user, email, _session = resolve_actor(request, query=request.GET.dict())
         course_id = str(request.GET.get("courseId", "")).strip()
-        queryset = models.Enrollment.objects.filter(email=email).select_related("course")
+        queryset = (
+            models.Enrollment.objects.filter(email=email)
+            .select_related("course", "current_lesson", "course__category_ref")
+            .prefetch_related("course__course_modules__lessons", "lesson_progress_items__lesson", "lesson_progress_items__lesson__module")
+        )
         if course_id:
             queryset = queryset.filter(course__slug=course_id)
         items = [serialize_enrollment(item) for item in queryset]
@@ -591,6 +1005,8 @@ def enrollments(request):
         enrollment.save(update_fields=["user"])
     sync_student_profile_metrics(user=user, email=email)
     if created:
+        course.students_count = models.Enrollment.objects.filter(course=course).count()
+        course.save(update_fields=["students_count", "updated_at"])
         models.PlatformNotification.objects.create(
             audience_scope=models.PlatformNotification.SCOPE_EMAIL,
             audience_email=email,
@@ -628,17 +1044,73 @@ def enrollment_progress(request):
     except (TypeError, ValueError):
         progress_percent = 0
     progress_percent = max(0, min(100, progress_percent))
+    lesson_id = str(data.get("lessonId", "")).strip()
+    position_seconds_raw = data.get("positionSeconds", data.get("lastPositionSeconds", 0))
+    try:
+        position_seconds = max(0, int(position_seconds_raw or 0))
+    except (TypeError, ValueError):
+        position_seconds = 0
     enrollment, _created = models.Enrollment.objects.get_or_create(
         email=email,
         course=course,
         defaults={"user": user, "status": "active", "progress_percent": progress_percent},
     )
     enrollment.user = user
-    enrollment.progress_percent = progress_percent
-    enrollment.status = "completed" if progress_percent >= 100 else "active"
-    enrollment.save(update_fields=["user", "progress_percent", "status"])
+    lesson_progress_payload = None
+    if lesson_id:
+        lesson = lesson_by_key(lesson_id)
+        if not lesson or lesson.module.course_id != course.pk:
+            return error_response("Lesson not found for this course.", 404)
+        lesson_progress, _lp_created = models.LessonProgress.objects.get_or_create(
+            enrollment=enrollment,
+            lesson=lesson,
+            defaults={
+                "user": user,
+                "email": email,
+                "status": "in_progress" if progress_percent > 0 else "not_started",
+                "progress_percent": progress_percent,
+                "last_position_seconds": position_seconds,
+                "last_viewed_at": now(),
+            },
+        )
+        lesson_progress.user = user
+        lesson_progress.email = email
+        lesson_progress.progress_percent = progress_percent
+        lesson_progress.status = "completed" if progress_percent >= 100 else ("in_progress" if progress_percent > 0 else "not_started")
+        lesson_progress.last_position_seconds = position_seconds
+        lesson_progress.last_viewed_at = now()
+        lesson_progress.completed_at = now() if progress_percent >= 100 else None
+        lesson_progress.save(
+            update_fields=[
+                "user",
+                "email",
+                "progress_percent",
+                "status",
+                "last_position_seconds",
+                "last_viewed_at",
+                "completed_at",
+            ]
+        )
+        enrollment.current_lesson = lesson
+        lesson_progress_payload = {
+            "lessonId": lesson.lesson_key,
+            "status": lesson_progress.status,
+            "progressPercent": lesson_progress.progress_percent,
+            "lastPositionSeconds": lesson_progress.last_position_seconds,
+            "completedAt": isoformat_z(lesson_progress.completed_at),
+        }
+        recalculate_enrollment_progress(enrollment)
+    else:
+        enrollment.progress_percent = progress_percent
+        enrollment.status = "completed" if progress_percent >= 100 else "active"
+        enrollment.completed_at = now() if progress_percent >= 100 else None
+        enrollment.last_activity_at = now()
+    enrollment.save()
     sync_student_profile_metrics(user=user, email=email)
-    return json_response({"ok": True, "enrollment": serialize_enrollment(enrollment)})
+    response_payload = {"ok": True, "enrollment": serialize_enrollment(enrollment)}
+    if lesson_progress_payload:
+        response_payload["lessonProgress"] = lesson_progress_payload
+    return json_response(response_payload)
 
 
 @csrf_exempt
@@ -833,10 +1305,14 @@ def instructor_courses(request):
     if response := guard_method(request, {"GET", "POST"}):
         return response
     if request.method == "GET":
+        user, _email, _session = resolve_actor(request, query=request.GET.dict())
         instructor = str(request.GET.get("instructor", "")).strip()
-        queryset = models.Course.objects.all()
+        mine_only = str(request.GET.get("mine", "")).strip().lower() in {"1", "true", "yes"}
+        queryset = models.Course.objects.select_related("category_ref", "created_by").prefetch_related("course_modules__lessons").all()
         if instructor:
             queryset = queryset.filter(instructor_name__iexact=instructor)
+        if mine_only and user:
+            queryset = queryset.filter(created_by=user)
         courses = [serialize_course(course) for course in queryset]
         return json_response({"ok": True, "count": len(courses), "courses": courses})
 
@@ -850,6 +1326,11 @@ def instructor_courses(request):
     user, _email, _session = resolve_actor(request, data=data)
     if access_error := require_instructor_access(user):
         return access_error
+    existing_course_id = str(input_course.get("id", "")).strip()
+    if existing_course_id:
+        existing_course = course_by_slug_or_404(existing_course_id)
+        if access_error := require_course_owner_access(user, existing_course):
+            return access_error
     course, created = create_or_update_course_from_input(input_course, user=user)
     return json_response({"ok": True, "created": created, "course": serialize_course(course)}, status=201 if created else 200)
 
@@ -865,11 +1346,9 @@ def instructor_thumbnail(request):
     if not course_id:
         return error_response("courseId is required.", 400)
     user, _email, _session = resolve_actor(request, data=data)
-    if access_error := require_instructor_access(user):
-        return access_error
     course = course_by_slug_or_404(course_id)
-    if not course:
-        return error_response("Course not found", 404)
+    if access_error := require_course_owner_access(user, course):
+        return access_error
     course.thumbnail = thumbnail
     course.save(update_fields=["thumbnail", "updated_at"])
     return json_response({"ok": True, "course": serialize_course(course)})

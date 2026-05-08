@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import re
 import uuid
 from datetime import timedelta, timezone as dt_timezone
@@ -9,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import jwt
-from accounts.models import EmailVerificationToken, RefreshToken
+from accounts.models import EmailVerificationToken, RefreshToken, TwoFactorChallenge
 from accounts.permissions import build_user_capabilities, can_manage_instructor_content, user_role
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -19,10 +20,11 @@ from django.core.mail import send_mail
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
+from django.template.loader import render_to_string
 from django.utils import timezone
 
 from . import catalog, models
-from .utils import DEFAULT_ACTOR_EMAIL, build_token, format_compact, format_number, normalize_email, slugify
+from .utils import DEFAULT_ACTOR_EMAIL, build_token, clone_json, format_compact, format_number, normalize_email, slugify
 
 
 AUTH_COOKIE_NAME = "skillforge_session"
@@ -31,6 +33,7 @@ REFRESH_TOKEN_TTL_DAYS = 14
 REFRESH_SESSION_TTL_DAYS = 30
 EMAIL_VERIFICATION_TTL_HOURS = 24
 PASSWORD_RESET_TTL_MINUTES = 30
+TWO_FACTOR_OTP_TTL_MINUTES = 10
 JWT_ALGORITHM = "HS256"
 JWT_ISSUER = "skillforge-django"
 SEED_PATH = Path(__file__).resolve().parent / "data" / "seed_store.json"
@@ -41,6 +44,8 @@ AUTH_RATE_LIMITS = {
     "login.email": (8, 15 * 60),
     "verify.request.ip": (6, 60 * 60),
     "verify.request.email": (3, 60 * 60),
+    "2fa.challenge.ip": (10, 15 * 60),
+    "2fa.verify.challenge": (8, 15 * 60),
     "password_reset.ip": (6, 60 * 60),
     "password_reset.email": (3, 60 * 60),
 }
@@ -55,6 +60,10 @@ class RefreshTokenReuseDetected(AuthTokenError):
 
 
 class VerificationTokenError(Exception):
+    pass
+
+
+class TwoFactorChallengeError(Exception):
     pass
 
 
@@ -114,6 +123,69 @@ def serialize_instructor_profile(profile) -> dict[str, Any]:
     }
 
 
+def serialize_course_category(category) -> dict[str, Any] | None:
+    if not category:
+        return None
+    return {
+        "id": category.slug,
+        "slug": category.slug,
+        "code": category.code,
+        "label": category.label,
+        "badgeClass": category.badge_class,
+        "gradient": category.gradient,
+        "description": category.description,
+        "requirements": clone_json(category.requirements),
+        "learn": clone_json(category.learn),
+        "resources": clone_json(category.resources),
+        "qa": clone_json(category.qa),
+        "sortOrder": category.sort_order,
+        "isActive": category.is_active,
+    }
+
+
+def serialize_course_lesson(lesson, *, progress=None) -> dict[str, Any]:
+    progress_percent = int(getattr(progress, "progress_percent", 100 if lesson.metadata.get("done") else 0) or 0)
+    is_done = progress_percent >= 100 or bool(lesson.metadata.get("done"))
+    return {
+        "id": lesson.lesson_key,
+        "title": lesson.title,
+        "duration": lesson.duration_label,
+        "type": lesson.content_type,
+        "free": bool(lesson.is_free_preview),
+        "done": is_done,
+        "position": lesson.position,
+        "summary": lesson.summary,
+        "progressPercent": progress_percent,
+        "status": getattr(progress, "status", "completed" if is_done else "not_started"),
+        "lastPositionSeconds": int(getattr(progress, "last_position_seconds", 0) or 0),
+        "completedAt": isoformat_z(getattr(progress, "completed_at", None)),
+        "assetUrl": lesson.asset_url,
+        "metadata": clone_json(lesson.metadata),
+    }
+
+
+def serialize_course_module(module, *, progress_by_lesson_id: dict[str, Any] | None = None) -> dict[str, Any]:
+    progress_by_lesson_id = progress_by_lesson_id or {}
+    lessons = [serialize_course_lesson(lesson, progress=progress_by_lesson_id.get(lesson.lesson_key)) for lesson in module.lessons.all()]
+    return {
+        "id": f"{module.course.slug}-m{module.position}",
+        "title": module.title,
+        "duration": module.duration_label,
+        "summary": module.summary,
+        "position": module.position,
+        "published": module.is_published,
+        "lessons": lessons,
+    }
+
+
+def structured_modules_for_course(course, *, progress_by_lesson_id: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    progress_by_lesson_id = progress_by_lesson_id or {}
+    course_modules = list(course.course_modules.all()) if hasattr(course, "course_modules") else []
+    if course_modules:
+        return [serialize_course_module(module, progress_by_lesson_id=progress_by_lesson_id) for module in course_modules]
+    return clone_json(course.modules)
+
+
 def serialize_user(user) -> dict[str, Any]:
     student_profile = related_or_none(user, "student_profile")
     instructor_profile = related_or_none(user, "instructor_profile")
@@ -125,9 +197,13 @@ def serialize_user(user) -> dict[str, Any]:
         "username": getattr(user, "username", None),
         "avatar": getattr(user, "avatar", ""),
         "bio": getattr(user, "bio", ""),
+        "socialLinks": getattr(user, "social_links", {}) or {},
         "role": user_role(user),
         "capabilities": build_user_capabilities(user),
         "verified": bool(getattr(user, "is_email_verified", False)),
+        "twoFactorEnabled": bool(getattr(user, "two_factor_enabled", False)),
+        "twoFactorMethod": getattr(user, "two_factor_method", "email_otp"),
+        "requiresTwoFactor": requires_two_factor(user),
         "status": getattr(user, "status", "active"),
         "studentProfile": serialize_student_profile(student_profile) if student_profile else None,
         "instructorProfile": serialize_instructor_profile(instructor_profile) if instructor_profile else None,
@@ -153,22 +229,47 @@ def serialize_session(session: RefreshToken | None) -> dict[str, Any] | None:
     }
 
 
+def serialize_lesson_progress(progress) -> dict[str, Any]:
+    return {
+        "lessonId": progress.lesson.lesson_key,
+        "courseId": progress.enrollment.course.slug,
+        "status": progress.status,
+        "progressPercent": progress.progress_percent,
+        "lastPositionSeconds": progress.last_position_seconds,
+        "startedAt": isoformat_z(progress.started_at),
+        "completedAt": isoformat_z(progress.completed_at),
+        "lastViewedAt": isoformat_z(progress.last_viewed_at),
+    }
+
+
 def serialize_enrollment(enrollment: models.Enrollment) -> dict[str, Any]:
+    lesson_progress_items = list(enrollment.lesson_progress_items.select_related("lesson", "lesson__module").all()) if hasattr(enrollment, "lesson_progress_items") else []
     return {
         "id": str(enrollment.pk),
         "courseId": enrollment.course.slug,
         "email": enrollment.email,
         "status": enrollment.status,
         "progressPercent": enrollment.progress_percent,
+        "currentLessonId": enrollment.current_lesson.lesson_key if enrollment.current_lesson else None,
+        "completedAt": isoformat_z(getattr(enrollment, "completed_at", None)),
+        "lastActivityAt": isoformat_z(getattr(enrollment, "last_activity_at", None)),
+        "lessonProgress": [serialize_lesson_progress(item) for item in lesson_progress_items],
         "createdAt": isoformat_z(enrollment.created_at),
         "course": serialize_course(enrollment.course),
     }
 
 
 def serialize_course(course: models.Course) -> dict[str, Any]:
+    category_payload = serialize_course_category(getattr(course, "category_ref", None))
+    modules = structured_modules_for_course(course)
+    requirements = clone_json(course.requirements or (category_payload.get("requirements") if category_payload else []))
+    learn = clone_json(course.learn or (category_payload.get("learn") if category_payload else []))
+    resources = clone_json(course.resources or (category_payload.get("resources") if category_payload else []))
+    qa = clone_json(course.qa or (category_payload.get("qa") if category_payload else []))
     return {
         "id": course.slug,
         "cat": course.category,
+        "categoryDetail": category_payload,
         "mark": course.mark,
         "title": course.title,
         "instructor": course.instructor_name,
@@ -188,28 +289,106 @@ def serialize_course(course: models.Course) -> dict[str, Any]:
         "updated": course.updated_label,
         "updatedSort": course.updated_sort,
         "projects": course.projects_count,
-        "gradient": course.gradient,
+        "gradient": course.gradient or (category_payload.get("gradient") if category_payload else ""),
         "overview": course.overview,
         "thumbnail": course.thumbnail,
-        "track": course.track,
-        "requirements": course.requirements,
-        "learn": course.learn,
-        "resources": course.resources,
-        "qa": course.qa,
-        "modules": course.modules,
+        "track": course.track or (category_payload.get("label") if category_payload else ""),
+        "requirements": requirements,
+        "learn": learn,
+        "resources": resources,
+        "qa": qa,
+        "modules": modules,
+        "moduleCount": len(modules),
+        "freeLessonCount": sum(1 for module in modules for lesson in module.get("lessons", []) if lesson.get("free")),
     }
+
+
+def normalize_course_modules(modules: list[dict[str, Any]], course_slug: str) -> list[dict[str, Any]]:
+    normalized_modules: list[dict[str, Any]] = []
+    for module_index, raw_module in enumerate(modules or [], start=1):
+        if not isinstance(raw_module, dict):
+            continue
+        normalized_lessons: list[dict[str, Any]] = []
+        for lesson_index, raw_lesson in enumerate(raw_module.get("lessons", []) or [], start=1):
+            if not isinstance(raw_lesson, dict):
+                continue
+            lesson_id = str(raw_lesson.get("id") or raw_lesson.get("lessonId") or f"{course_slug}-m{module_index}-l{lesson_index}").strip()
+            lesson_type = str(raw_lesson.get("type", models.CourseLesson.TYPE_VIDEO)).strip().lower() or models.CourseLesson.TYPE_VIDEO
+            if lesson_type not in {choice for choice, _label in models.CourseLesson.TYPE_CHOICES}:
+                lesson_type = models.CourseLesson.TYPE_VIDEO
+            normalized_lesson = {
+                "id": slugify(lesson_id),
+                "title": str(raw_lesson.get("title", f"Lesson {lesson_index}")).strip() or f"Lesson {lesson_index}",
+                "duration": str(raw_lesson.get("duration", "")).strip(),
+                "type": lesson_type,
+                "free": bool(raw_lesson.get("free", False)),
+                "done": bool(raw_lesson.get("done", False)),
+                "summary": str(raw_lesson.get("summary") or raw_lesson.get("description") or "").strip(),
+                "assetUrl": str(raw_lesson.get("assetUrl") or raw_lesson.get("url") or "").strip(),
+                "metadata": clone_json(raw_lesson.get("metadata", {})) if isinstance(raw_lesson.get("metadata"), dict) else {},
+            }
+            normalized_lessons.append(normalized_lesson)
+        normalized_modules.append(
+            {
+                "id": slugify(str(raw_module.get("id") or f"{course_slug}-m{module_index}").strip()),
+                "title": str(raw_module.get("title", f"Module {module_index}")).strip() or f"Module {module_index}",
+                "duration": str(raw_module.get("duration", "")).strip(),
+                "summary": str(raw_module.get("summary") or raw_module.get("description") or "").strip(),
+                "position": module_index,
+                "lessons": normalized_lessons,
+            }
+        )
+    return normalized_modules
 
 
 def parse_course_input(source: dict[str, Any], existing: models.Course | None = None) -> dict[str, Any]:
     existing_payload = serialize_course(existing) if existing else None
     normalized = catalog.normalize_course_input(source, existing_payload)
     normalized = catalog.enrich_course(normalized)
+    for field_name in ("requirements", "learn", "resources", "qa"):
+        if isinstance(source.get(field_name), list):
+            normalized[field_name] = clone_json(source[field_name])
+    modules_source = source.get("modules") if isinstance(source.get("modules"), list) else normalized.get("modules", [])
+    normalized["modules"] = normalize_course_modules(modules_source, normalized["id"] or slugify(normalized["title"]))
+    if normalized["modules"]:
+        normalized["lessons"] = sum(len(module.get("lessons", [])) for module in normalized["modules"])
+    if source.get("track"):
+        normalized["track"] = str(source.get("track", "")).strip() or normalized["track"]
+    if source.get("badge"):
+        normalized["badge"] = str(source.get("badge", "")).strip() or normalized["badge"]
+    if source.get("thumbnail"):
+        normalized["thumbnail"] = str(source.get("thumbnail", "")).strip()
     return normalized
 
 
+def ensure_course_category(payload: dict[str, Any]) -> models.CourseCategory:
+    category_code = str(payload.get("cat", "ai")).strip().lower() or "ai"
+    library_entry = catalog.CATEGORY_LIBRARY.get(category_code, catalog.CATEGORY_LIBRARY["ai"])
+    category_order = list(catalog.CATEGORY_LIBRARY.keys())
+    category_detail = payload.get("categoryDetail") if isinstance(payload.get("categoryDetail"), dict) else {}
+    return models.CourseCategory.objects.update_or_create(
+        slug=category_code,
+        defaults={
+            "code": str(payload.get("mark") or catalog.get_category_mark(category_code))[:8],
+            "label": str(payload.get("track") or library_entry["label"]).strip() or library_entry["label"],
+            "badge_class": str(payload.get("badgeClass") or library_entry["badgeClass"]).strip(),
+            "gradient": str(payload.get("gradient") or catalog.get_category_gradient(category_code)).strip(),
+            "description": str(category_detail.get("description") or f"{library_entry['label']} learning path on SkillForge.").strip(),
+            "sort_order": category_order.index(category_code) + 1 if category_code in category_order else len(category_order) + 1,
+            "is_active": True,
+            "requirements": clone_json(payload.get("requirements") or library_entry["requirements"]),
+            "learn": clone_json(payload.get("learn") or library_entry["learn"]),
+            "resources": clone_json(payload.get("resources") or library_entry["resources"]),
+            "qa": clone_json(payload.get("qa") or library_entry["qa"]),
+        },
+    )[0]
+
+
 def apply_course_payload(course: models.Course, payload: dict[str, Any], *, is_custom: bool, created_by=None) -> models.Course:
+    category = ensure_course_category(payload)
     course.slug = payload["id"]
     course.category = payload["cat"]
+    course.category_ref = category
     course.mark = payload["mark"]
     course.title = payload["title"]
     course.instructor_name = payload["instructor"]
@@ -240,10 +419,82 @@ def apply_course_payload(course: models.Course, payload: dict[str, Any], *, is_c
     return course
 
 
+def sync_course_structure(course: models.Course, payload: dict[str, Any]) -> None:
+    modules_payload = normalize_course_modules(payload.get("modules", []), course.slug)
+    seen_module_positions: list[int] = []
+    seen_lesson_keys: list[str] = []
+    existing_lessons = {
+        lesson.lesson_key: lesson
+        for lesson in models.CourseLesson.objects.filter(module__course=course).select_related("module")
+    }
+
+    for module_index, module_payload in enumerate(modules_payload, start=1):
+        seen_module_positions.append(module_index)
+        module, _created = models.CourseModule.objects.get_or_create(
+            course=course,
+            position=module_index,
+            defaults={
+                "title": module_payload["title"],
+                "summary": module_payload.get("summary", ""),
+                "duration_label": module_payload.get("duration", ""),
+                "is_published": True,
+            },
+        )
+        module.title = module_payload["title"]
+        module.summary = module_payload.get("summary", "")
+        module.duration_label = module_payload.get("duration", "")
+        module.is_published = True
+        module.save(update_fields=["title", "summary", "duration_label", "is_published", "updated_at"])
+
+        for lesson_index, lesson_payload in enumerate(module_payload.get("lessons", []), start=1):
+            lesson_key = slugify(str(lesson_payload.get("id") or f"{course.slug}-m{module_index}-l{lesson_index}"))
+            seen_lesson_keys.append(lesson_key)
+            lesson = existing_lessons.get(lesson_key) or models.CourseLesson(module=module, lesson_key=lesson_key)
+            lesson.module = module
+            lesson.lesson_key = lesson_key
+            lesson.title = lesson_payload["title"]
+            lesson.summary = lesson_payload.get("summary", "")
+            lesson.duration_label = lesson_payload.get("duration", "")
+            lesson.content_type = lesson_payload.get("type") or models.CourseLesson.TYPE_VIDEO
+            lesson.position = lesson_index
+            lesson.is_free_preview = bool(lesson_payload.get("free", False))
+            lesson.is_published = True
+            lesson.asset_url = lesson_payload.get("assetUrl", "")
+            lesson.metadata = clone_json(lesson_payload.get("metadata", {}))
+            if lesson_payload.get("done"):
+                lesson.metadata["done"] = True
+            lesson.save()
+
+    models.CourseLesson.objects.filter(module__course=course).exclude(lesson_key__in=seen_lesson_keys).delete()
+    models.CourseModule.objects.filter(course=course).exclude(position__in=seen_module_positions).delete()
+
+    course.modules = clone_json(modules_payload)
+    course.lessons_count = sum(len(module.get("lessons", [])) for module in modules_payload)
+    course.save(update_fields=["modules", "lessons_count", "updated_at"])
+
+
 @transaction.atomic
 def seed_database(force: bool = False) -> None:
     User = get_user_model()
     seed = load_seed_data()
+
+    for category_code, category_payload in catalog.CATEGORY_LIBRARY.items():
+        models.CourseCategory.objects.update_or_create(
+            slug=category_code,
+            defaults={
+                "code": catalog.get_category_mark(category_code),
+                "label": category_payload["label"],
+                "badge_class": category_payload["badgeClass"],
+                "gradient": catalog.get_category_gradient(category_code),
+                "description": f"{category_payload['label']} learning path on SkillForge.",
+                "sort_order": list(catalog.CATEGORY_LIBRARY.keys()).index(category_code) + 1,
+                "is_active": True,
+                "requirements": clone_json(category_payload["requirements"]),
+                "learn": clone_json(category_payload["learn"]),
+                "resources": clone_json(category_payload["resources"]),
+                "qa": clone_json(category_payload["qa"]),
+            },
+        )
 
     demo = seed.get("users", [{}])[0]
     demo_email = normalize_email(demo.get("email") or "demo@skillforge.local")
@@ -280,6 +531,7 @@ def seed_database(force: bool = False) -> None:
         course, _created = models.Course.objects.get_or_create(slug=payload["id"])
         apply_course_payload(course, payload, is_custom=False)
         course.save()
+        sync_course_structure(course, payload)
 
     for raw_coupon in seed.get("coupons", []):
         models.Coupon.objects.update_or_create(
@@ -308,6 +560,16 @@ def seed_database(force: bool = False) -> None:
 def auth_version_for_user(user) -> int:
     version_source = getattr(user, "last_password_changed_at", None) or getattr(user, "date_joined", None) or now()
     return int(version_source.timestamp())
+
+
+def requires_two_factor(user) -> bool:
+    if not user:
+        return False
+    return bool(
+        getattr(user, "two_factor_enabled", False)
+        or user_role(user) in {"instructor", "admin"}
+        or getattr(user, "is_staff", False)
+    )
 
 
 def normalize_username(value: str | None) -> str:
@@ -343,6 +605,10 @@ def client_ip_for_request(request) -> str:
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generate_otp_code() -> str:
+    return f"{random.randint(0, 999999):06d}"
 
 
 def _rate_limit_cache_key(scope: str, identifier: str) -> str:
@@ -384,10 +650,9 @@ def build_verification_url(request, raw_token: str) -> str:
 
 def send_verification_email(user, request, raw_token: str) -> str:
     verification_url = build_verification_url(request, raw_token)
-    message = (
-        "Welcome to SkillForge.\n\n"
-        f"Verify your email by opening this link:\n{verification_url}\n\n"
-        f"Verification token:\n{raw_token}\n"
+    message = render_to_string(
+        "academy/emails/verify_email.txt",
+        {"user": user, "verification_url": verification_url, "verification_token": raw_token},
     )
     send_mail(
         subject="Verify your SkillForge account",
@@ -434,6 +699,103 @@ def confirm_email_verification(raw_token: str):
         action="verify_email.confirm",
     )
     return token_record.user, token_record
+
+
+def send_two_factor_email(user, request, otp_code: str) -> str:
+    message = render_to_string(
+        "academy/emails/two_factor_otp.txt",
+        {
+            "user": user,
+            "otp_code": otp_code,
+            "expires_minutes": TWO_FACTOR_OTP_TTL_MINUTES,
+        },
+    )
+    send_mail(
+        subject="Your SkillForge verification code",
+        message=message,
+        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@skillforge.local"),
+        recipient_list=[user.email],
+        fail_silently=True,
+    )
+    return user.email
+
+
+def issue_two_factor_challenge(user, request):
+    if not requires_two_factor(user):
+        raise TwoFactorChallengeError("Two-factor authentication is not required for this account.")
+    TwoFactorChallenge.objects.filter(user=user, consumed_at__isnull=True).update(consumed_at=now())
+    selected_method = getattr(user, "two_factor_method", user.TwoFactorMethod.EMAIL_OTP)
+    if selected_method != user.TwoFactorMethod.EMAIL_OTP:
+        selected_method = user.TwoFactorMethod.EMAIL_OTP
+    otp_code = generate_otp_code()
+    challenge = TwoFactorChallenge.objects.create(
+        user=user,
+        method=selected_method,
+        code_hash=hash_token(otp_code),
+        delivery_target=user.email or "",
+        expires_at=now() + timedelta(minutes=TWO_FACTOR_OTP_TTL_MINUTES),
+        created_ip=client_ip_for_request(request),
+        created_user_agent=request.headers.get("User-Agent", ""),
+    )
+    delivery_target = send_two_factor_email(user, request, otp_code)
+    models.AuthAuditLog.objects.create(
+        user=user,
+        email=user.email or DEFAULT_ACTOR_EMAIL,
+        action="two_factor.challenge",
+        metadata={"challengeId": str(challenge.pk), "method": challenge.method},
+    )
+    return otp_code, challenge, delivery_target
+
+
+def verify_two_factor_challenge(challenge_id: str, otp_code: str):
+    challenge = TwoFactorChallenge.objects.select_related("user").filter(pk=challenge_id).first()
+    if not challenge:
+        raise TwoFactorChallengeError("Two-factor challenge was not found.")
+    if challenge.consumed_at:
+        raise TwoFactorChallengeError("Two-factor challenge has already been used.")
+    if challenge.expires_at <= now():
+        raise TwoFactorChallengeError("Two-factor challenge has expired.")
+    if challenge.attempts >= challenge.max_attempts:
+        raise TwoFactorChallengeError("Too many invalid verification attempts.")
+    if challenge.code_hash != hash_token(otp_code):
+        challenge.attempts += 1
+        challenge.save(update_fields=["attempts", "updated_at"])
+        models.AuthAuditLog.objects.create(
+            user=challenge.user,
+            email=challenge.user.email or DEFAULT_ACTOR_EMAIL,
+            action="two_factor.failed",
+            metadata={"challengeId": str(challenge.pk)},
+        )
+        raise TwoFactorChallengeError("Verification code is invalid.")
+    challenge.consumed_at = now()
+    challenge.save(update_fields=["consumed_at", "updated_at"])
+    models.AuthAuditLog.objects.create(
+        user=challenge.user,
+        email=challenge.user.email or DEFAULT_ACTOR_EMAIL,
+        action="two_factor.verify",
+        metadata={"challengeId": str(challenge.pk)},
+    )
+    return challenge.user, challenge
+
+
+def build_password_reset_url(request, raw_token: str) -> str:
+    return request.build_absolute_uri(f"/api/reset-password?token={raw_token}")
+
+
+def send_password_reset_email(user, request, raw_token: str) -> str:
+    reset_url = build_password_reset_url(request, raw_token)
+    message = render_to_string(
+        "academy/emails/password_reset.txt",
+        {"user": user, "reset_url": reset_url, "reset_token": raw_token},
+    )
+    send_mail(
+        subject="Reset your SkillForge password",
+        message=message,
+        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@skillforge.local"),
+        recipient_list=[user.email],
+        fail_silently=True,
+    )
+    return reset_url
 
 
 def build_access_token(user, issued_at=None) -> str:
@@ -652,6 +1014,8 @@ def rotate_refresh_session(request, data: dict[str, Any] | None = None):
 
 
 def get_authenticated_context(request, data: dict[str, Any] | None = None):
+    if getattr(request, "api_user", None) is not None:
+        return request.api_user, get_refresh_session_from_request(request, data)
     access_token = extract_access_token(request, data)
     if access_token:
         try:
@@ -745,8 +1109,58 @@ def sync_student_profile_metrics(user=None, email: str | None = None):
     )
 
 
+def list_course_categories() -> list[models.CourseCategory]:
+    return list(models.CourseCategory.objects.filter(is_active=True).order_by("sort_order", "label"))
+
+
+def lesson_by_key(lesson_key: str) -> models.CourseLesson | None:
+    return models.CourseLesson.objects.select_related("module", "module__course").filter(lesson_key=lesson_key).first()
+
+
+def recalculate_enrollment_progress(enrollment: models.Enrollment) -> models.Enrollment:
+    lessons = list(
+        models.CourseLesson.objects.filter(module__course=enrollment.course, is_published=True)
+        .select_related("module")
+        .order_by("module__position", "position", "pk")
+    )
+    if not lessons:
+        enrollment.last_activity_at = now()
+        if enrollment.progress_percent >= 100 and not enrollment.completed_at:
+            enrollment.completed_at = now()
+        return enrollment
+
+    progress_map = {
+        item.lesson_id: item
+        for item in models.LessonProgress.objects.filter(enrollment=enrollment).select_related("lesson")
+    }
+    total_progress = 0
+    last_seen_progress = None
+    for lesson in lessons:
+        progress_item = progress_map.get(lesson.pk)
+        total_progress += int(getattr(progress_item, "progress_percent", 0) or 0)
+        if progress_item and (
+            not last_seen_progress
+            or (progress_item.last_viewed_at or progress_item.started_at or now()) >= (last_seen_progress.last_viewed_at or last_seen_progress.started_at or now())
+        ):
+            last_seen_progress = progress_item
+    enrollment.progress_percent = round(total_progress / len(lessons))
+    enrollment.status = "completed" if enrollment.progress_percent >= 100 else "active"
+    enrollment.completed_at = now() if enrollment.progress_percent >= 100 else None
+    enrollment.current_lesson = last_seen_progress.lesson if last_seen_progress else next(
+        (lesson for lesson in lessons if int(getattr(progress_map.get(lesson.pk), "progress_percent", 0) or 0) < 100),
+        lessons[-1],
+    )
+    enrollment.last_activity_at = now()
+    return enrollment
+
+
 def course_by_slug_or_404(course_slug: str) -> models.Course | None:
-    return models.Course.objects.filter(slug=course_slug).first()
+    return (
+        models.Course.objects.select_related("category_ref", "created_by")
+        .prefetch_related("course_modules__lessons")
+        .filter(slug=course_slug)
+        .first()
+    )
 
 
 def create_or_update_course_from_input(input_course: dict[str, Any], user=None) -> tuple[models.Course, bool]:
@@ -768,4 +1182,5 @@ def create_or_update_course_from_input(input_course: dict[str, Any], user=None) 
     course = course or models.Course(slug=slug_value)
     apply_course_payload(course, normalized, is_custom=True, created_by=user)
     course.save()
+    sync_course_structure(course, normalized)
     return course, created

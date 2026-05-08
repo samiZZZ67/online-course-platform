@@ -17,6 +17,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='authauditlog',
             name='action',
-            field=models.CharField(choices=[('signup', 'Signup'), ('login', 'Login'), ('refresh', 'Refresh'), ('refresh.reuse_detected', 'Refresh Reuse Detected'), ('logout', 'Logout'), ('verify_email.request', 'Verify Email Request'), ('verify_email.confirm', 'Verify Email Confirm'), ('password_reset.request', 'Password Reset Request'), ('password_reset.confirm', 'Password Reset Confirm')], max_length=64),
+            field=models.CharField(choices=[('signup', 'Signup'), ('login', 'Login'), ('login_failed', 'Login Failed'), ('refresh', 'Refresh'), ('refresh.reuse_detected', 'Refresh Reuse Detected'), ('logout', 'Logout'), ('verify_email.request', 'Verify Email Request'), ('verify_email.confirm', 'Verify Email Confirm'), ('password_change', 'Password Change'), ('password_reset.request', 'Password Reset Request'), ('password_reset.confirm', 'Password Reset Confirm')], max_length=64),
         ),
     ]

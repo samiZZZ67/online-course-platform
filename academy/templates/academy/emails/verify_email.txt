@@ -1,0 +1,7 @@
+Welcome to SkillForge.
+
+Verify your email by opening this link:
+{{ verification_url }}
+
+Verification token:
+{{ verification_token }}

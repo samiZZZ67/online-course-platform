@@ -1,2 +1,4 @@
 Django==5.2.13
+djangorestframework==3.16.1
+drf-spectacular==0.29.0
 PyJWT==2.12.1

@@ -3,12 +3,48 @@ from django.contrib import admin
 from . import models
 
 
+class CourseLessonInline(admin.TabularInline):
+    model = models.CourseLesson
+    extra = 0
+    fields = ("position", "lesson_key", "title", "content_type", "duration_label", "is_free_preview", "is_published")
+    readonly_fields = ()
+
+
+class CourseModuleInline(admin.StackedInline):
+    model = models.CourseModule
+    extra = 0
+    fields = ("position", "title", "summary", "duration_label", "is_published")
+
+
+@admin.register(models.CourseCategory)
+class CourseCategoryAdmin(admin.ModelAdmin):
+    list_display = ("label", "slug", "code", "sort_order", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("label", "slug", "code", "description")
+
+
 @admin.register(models.Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ("title", "slug", "category", "instructor_name", "price_value", "is_custom")
-    list_filter = ("category", "level", "is_custom")
+    list_display = ("title", "slug", "category", "category_ref", "instructor_name", "price_value", "is_custom")
+    list_filter = ("category", "category_ref", "level", "is_custom")
     search_fields = ("title", "slug", "instructor_name", "overview")
     prepopulated_fields = {"slug": ("title",)}
+    inlines = (CourseModuleInline,)
+
+
+@admin.register(models.CourseModule)
+class CourseModuleAdmin(admin.ModelAdmin):
+    list_display = ("title", "course", "position", "duration_label", "is_published")
+    list_filter = ("is_published", "course__category")
+    search_fields = ("title", "summary", "course__title")
+    inlines = (CourseLessonInline,)
+
+
+@admin.register(models.CourseLesson)
+class CourseLessonAdmin(admin.ModelAdmin):
+    list_display = ("title", "lesson_key", "module", "content_type", "position", "is_free_preview", "is_published")
+    list_filter = ("content_type", "is_free_preview", "is_published")
+    search_fields = ("title", "lesson_key", "module__title", "module__course__title")
 
 
 @admin.register(models.Coupon)
@@ -39,9 +75,16 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
 
 @admin.register(models.Enrollment)
 class EnrollmentAdmin(admin.ModelAdmin):
-    list_display = ("course", "email", "status", "progress_percent", "created_at")
+    list_display = ("course", "email", "status", "progress_percent", "current_lesson", "last_activity_at", "created_at")
     search_fields = ("email", "course__title")
     list_filter = ("status",)
+
+
+@admin.register(models.LessonProgress)
+class LessonProgressAdmin(admin.ModelAdmin):
+    list_display = ("enrollment", "lesson", "status", "progress_percent", "last_position_seconds", "last_viewed_at")
+    search_fields = ("enrollment__email", "lesson__title", "lesson__module__course__title")
+    list_filter = ("status", "lesson__content_type")
 
 
 @admin.register(models.WishlistItem)

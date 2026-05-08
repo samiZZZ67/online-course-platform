@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
 from .forms import CustomUserChangeForm, CustomUserCreationForm
-from .models import EmailVerificationToken, InstructorProfile, RefreshToken, StudentProfile, User
+from .models import EmailVerificationToken, InstructorProfile, RefreshToken, StudentProfile, TwoFactorChallenge, User
 
 
 class StudentProfileInline(admin.StackedInline):
@@ -39,8 +39,8 @@ class UserAdmin(DjangoUserAdmin):
     inlines = (StudentProfileInline, InstructorProfileInline)
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Profile", {"fields": ("username", "first_name", "last_name", "avatar", "bio")}),
-        ("Access", {"fields": ("role", "status", "is_email_verified", "email_verified_at")}),
+        ("Profile", {"fields": ("username", "first_name", "last_name", "avatar", "bio", "social_links")}),
+        ("Access", {"fields": ("role", "status", "is_email_verified", "email_verified_at", "two_factor_enabled", "two_factor_method")}),
         ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
         ("Security", {"fields": ("last_login", "last_password_changed_at")}),
         ("Dates", {"fields": ("date_joined", "created_at", "updated_at")}),
@@ -108,3 +108,10 @@ class EmailVerificationTokenAdmin(admin.ModelAdmin):
     list_display = ("user", "sent_to_email", "expires_at", "consumed_at", "created_at")
     list_filter = ("consumed_at",)
     search_fields = ("user__email", "user__username", "token_hash", "sent_to_email")
+
+
+@admin.register(TwoFactorChallenge)
+class TwoFactorChallengeAdmin(admin.ModelAdmin):
+    list_display = ("user", "method", "delivery_target", "expires_at", "consumed_at", "attempts", "created_at")
+    list_filter = ("method", "consumed_at")
+    search_fields = ("user__email", "user__username", "delivery_target")
