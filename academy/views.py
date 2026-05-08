@@ -5,34 +5,46 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any, Iterable
 
+from accounts.permissions import can_manage_instructor_content, is_public_signup_role
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse, JsonResponse
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from . import models
 from .catalog import build_tutor_reply
 from .services import (
-    AUTH_COOKIE_NAME,
+    AuthTokenError,
+    RateLimitExceeded,
+    RefreshTokenReuseDetected,
+    VerificationTokenError,
     active_notifications_for,
     clear_auth_cookie,
+    confirm_email_verification,
     course_by_slug_or_404,
-    create_api_session,
     create_or_update_course_from_input,
+    enforce_rate_limit,
+    generate_unique_username,
     create_password_reset_token,
-    extract_session_token,
+    extract_refresh_token,
     get_authenticated_context,
+    issue_email_verification,
+    issue_auth_session,
     isoformat_z,
-    log_in_user,
-    log_out_user,
+    normalize_username,
     now,
+    rotate_refresh_session,
     resolve_actor,
     revoke_sessions,
     seed_database,
+    serialize_enrollment,
     serialize_course,
     serialize_session,
     serialize_user,
     set_auth_cookie,
+    sync_student_profile_metrics,
 )
 from .utils import DEFAULT_ACTOR_EMAIL, build_token, format_number, normalize_email, validate_email
 
@@ -64,6 +76,26 @@ def options_response() -> HttpResponse:
 
 def error_response(message: str, status: int) -> JsonResponse:
     return json_response({"ok": False, "message": message}, status=status)
+
+
+def rate_limit_response(error: RateLimitExceeded) -> JsonResponse:
+    response = error_response(str(error), 429)
+    response["Retry-After"] = str(error.retry_after)
+    return response
+
+
+def should_expose_dev_tokens(request) -> bool:
+    email_backend = getattr(settings, "EMAIL_BACKEND", "")
+    host = request.get_host() if hasattr(request, "get_host") else ""
+    return bool(settings.DEBUG or "locmem" in email_backend or host.startswith("testserver"))
+
+
+def require_instructor_access(user):
+    if not user:
+        return error_response("Authentication required.", 401)
+    if not can_manage_instructor_content(user):
+        return error_response("Instructor access is required for this action.", 403)
+    return None
 
 
 def guard_method(request, methods: Iterable[str]) -> HttpResponse | None:
@@ -182,17 +214,20 @@ def course_resources(request, course_id: str):
     )
 
 
-def _auth_success_response(request, user, session, status=200):
-    response = json_response(
-        {
-            "ok": True,
-            "user": serialize_user(user),
-            "token": session.token,
-            "session": serialize_session(session),
-        },
-        status=status,
-    )
-    return set_auth_cookie(response, session.token)
+def _auth_success_response(user, access_token, refresh_token, session, status=200, extra: dict[str, Any] | None = None):
+    payload = {
+        "ok": True,
+        "authenticated": True,
+        "user": serialize_user(user),
+        "token": access_token,
+        "accessToken": access_token,
+        "session": serialize_session(session),
+        "verificationRequired": not bool(getattr(user, "is_email_verified", False)),
+    }
+    if extra:
+        payload.update(extra)
+    response = json_response(payload, status=status)
+    return set_auth_cookie(response, refresh_token, expires_at=session.expires_at)
 
 
 @csrf_exempt
@@ -200,26 +235,54 @@ def auth_signup(request):
     if response := guard_method(request, {"POST"}):
         return response
     data = parse_request_data(request)
+    ip_address = request.META.get("REMOTE_ADDR", "unknown")
     first_name = str(data.get("firstName", "")).strip()
     last_name = str(data.get("lastName", "")).strip()
     email = normalize_email(data.get("email"))
     password = str(data.get("password", ""))
+    requested_username = str(data.get("username", "")).strip()
+    requested_role = str(data.get("role", "")).strip().lower()
+    try:
+        enforce_rate_limit("signup.ip", ip_address, message="Too many signup attempts from this address. Please try again shortly.")
+        if email:
+            enforce_rate_limit("signup.email", email, message="Too many signup attempts for this email. Please try again shortly.")
+    except RateLimitExceeded as exc:
+        return rate_limit_response(exc)
     if not first_name or not last_name:
         return error_response("First name and last name are required.", 400)
     if not validate_email(email):
         return error_response("A valid email address is required.", 400)
-    if len(password) < 8:
-        return error_response("Password must be at least 8 characters.", 400)
-
     User = get_user_model()
+    username = normalize_username(requested_username)
+    if requested_username and not username:
+        return error_response("Username must contain letters, numbers, underscores, or dots.", 400)
+    if username:
+        try:
+            User._meta.get_field("username").clean(username, None)
+        except ValidationError as exc:
+            return error_response(exc.messages[0], 400)
+        if User.objects.filter(username=username).exists():
+            return error_response("That username is already taken.", 409)
+    else:
+        username = generate_unique_username(first_name, last_name, email)
+    try:
+        validate_password(password)
+    except ValidationError as exc:
+        return error_response(exc.messages[0], 400)
+
+    role = requested_role or User.Role.STUDENT
+    if not is_public_signup_role(role):
+        return error_response("Role must be either student or instructor.", 400)
     if User.objects.filter(email=email).exists():
         return error_response("An account with that email already exists.", 409)
 
     user = User.objects.create_user(
         email=email,
+        username=username,
         first_name=first_name,
         last_name=last_name,
         password=password,
+        role=role,
     )
     models.AuthAuditLog.objects.create(user=user, email=email, action="signup")
     models.PlatformNotification.objects.create(
@@ -227,11 +290,18 @@ def auth_signup(request):
         audience_user=user,
         audience_email=email,
         title="Account created",
-        message="Your SkillForge learner account is ready.",
+        message="Your SkillForge instructor account is ready." if role == User.Role.INSTRUCTOR else "Your SkillForge learner account is ready.",
     )
-    log_in_user(request, user)
-    session = create_api_session(user, request)
-    return _auth_success_response(request, user, session, status=201)
+    verification_token, verification_record, verification_url = issue_email_verification(user, request)
+    access_token, refresh_token, session = issue_auth_session(user, request)
+    extra = {
+        "verificationEmailSent": True,
+        "verificationExpiresAt": isoformat_z(verification_record.expires_at),
+    }
+    if should_expose_dev_tokens(request):
+        extra["verificationToken"] = verification_token
+        extra["verificationUrl"] = verification_url
+    return _auth_success_response(user, access_token, refresh_token, session, status=201, extra=extra)
 
 
 @csrf_exempt
@@ -239,8 +309,15 @@ def auth_login(request):
     if response := guard_method(request, {"POST"}):
         return response
     data = parse_request_data(request)
+    ip_address = request.META.get("REMOTE_ADDR", "unknown")
     email = normalize_email(data.get("email"))
     password = str(data.get("password", ""))
+    try:
+        enforce_rate_limit("login.ip", ip_address, message="Too many login attempts from this address. Please try again shortly.")
+        if email:
+            enforce_rate_limit("login.email", email, message="Too many login attempts for this email. Please try again shortly.")
+    except RateLimitExceeded as exc:
+        return rate_limit_response(exc)
     if not validate_email(email):
         return error_response("A valid email address is required.", 400)
     if len(password) < 8:
@@ -250,11 +327,85 @@ def auth_login(request):
     user = User.objects.filter(email=email).first()
     if not user or not user.check_password(password):
         return error_response("Invalid email or password.", 401)
+    if not user.is_active or getattr(user, "status", "") in {"suspended", "deactivated"}:
+        return error_response("This account is not active.", 403)
 
-    log_in_user(request, user)
-    session = create_api_session(user, request)
+    access_token, refresh_token, session = issue_auth_session(user, request)
     models.AuthAuditLog.objects.create(user=user, email=user.email or email, action="login")
-    return _auth_success_response(request, user, session)
+    return _auth_success_response(user, access_token, refresh_token, session)
+
+
+@csrf_exempt
+def auth_refresh(request):
+    if response := guard_method(request, {"POST"}):
+        return response
+    data = parse_request_data(request)
+    try:
+        user, access_token, refresh_token, session = rotate_refresh_session(request, data)
+    except RefreshTokenReuseDetected as exc:
+        response = error_response(str(exc), 401)
+        return clear_auth_cookie(response)
+    except AuthTokenError as exc:
+        response = error_response(str(exc), 401)
+        return clear_auth_cookie(response)
+    return _auth_success_response(user, access_token, refresh_token, session)
+
+
+@csrf_exempt
+def auth_verify_email_request(request):
+    if response := guard_method(request, {"POST"}):
+        return response
+    data = parse_request_data(request)
+    user, _session = get_authenticated_context(request, data)
+    email = normalize_email(data.get("email") or (user.email if user else ""))
+    ip_address = request.META.get("REMOTE_ADDR", "unknown")
+    try:
+        enforce_rate_limit("verify.request.ip", ip_address, message="Too many verification email requests from this address. Please try again later.")
+        if email:
+            enforce_rate_limit("verify.request.email", email, message="Too many verification email requests for this email. Please try again later.")
+    except RateLimitExceeded as exc:
+        return rate_limit_response(exc)
+    if not user and not validate_email(email):
+        return error_response("A valid email address is required.", 400)
+    target_user = user or get_user_model().objects.filter(email=email).first()
+    payload = {"ok": True, "message": "If that account exists and is not verified, a verification email has been prepared."}
+    if target_user and not target_user.is_email_verified:
+        verification_token, verification_record, verification_url = issue_email_verification(target_user, request)
+        payload["verificationEmailSent"] = True
+        payload["verificationExpiresAt"] = isoformat_z(verification_record.expires_at)
+        if should_expose_dev_tokens(request):
+            payload["verificationToken"] = verification_token
+            payload["verificationUrl"] = verification_url
+    return json_response(payload)
+
+
+@csrf_exempt
+def auth_verify_email_confirm(request):
+    if response := guard_method(request, {"GET", "POST"}):
+        return response
+    data = parse_request_data(request)
+    token = str(data.get("token") or request.GET.get("token") or "").strip()
+    try:
+        user, verification_record = confirm_email_verification(token)
+    except VerificationTokenError as exc:
+        if request.method == "GET":
+            response = HttpResponse(str(exc), status=400, content_type="text/plain; charset=utf-8")
+            return add_cors_headers(response)
+        return error_response(str(exc), 400)
+    access_token, refresh_token, session = issue_auth_session(user, request)
+    extra = {
+        "verificationConfirmed": True,
+        "verifiedAt": isoformat_z(user.email_verified_at),
+        "verificationExpiresAt": isoformat_z(verification_record.expires_at),
+    }
+    if request.method == "GET":
+        response = HttpResponse(
+            f"Email verified for {user.email}. You can return to SkillForge now.",
+            content_type="text/plain; charset=utf-8",
+        )
+        response = add_cors_headers(response)
+        return set_auth_cookie(response, refresh_token, expires_at=session.expires_at)
+    return _auth_success_response(user, access_token, refresh_token, session, extra=extra)
 
 
 @csrf_exempt
@@ -281,11 +432,10 @@ def auth_logout(request):
         return response
     data = parse_request_data(request)
     user, session = get_authenticated_context(request, data)
-    token = extract_session_token(request, data)
+    refresh_token = extract_refresh_token(request, data)
     if user:
-        revoke_sessions(user, token=token, all_sessions=(str(data.get("allSessions", "")).lower() == "true" or data.get("allSessions") is True))
+        revoke_sessions(user, refresh_token=refresh_token, all_sessions=(str(data.get("allSessions", "")).lower() == "true" or data.get("allSessions") is True))
         models.AuthAuditLog.objects.create(user=user, email=user.email or DEFAULT_ACTOR_EMAIL, action="logout")
-    log_out_user(request)
     response = json_response(
         {
             "ok": True,
@@ -326,6 +476,13 @@ def auth_password_reset_request(request):
         return response
     data = parse_request_data(request)
     email = normalize_email(data.get("email"))
+    ip_address = request.META.get("REMOTE_ADDR", "unknown")
+    try:
+        enforce_rate_limit("password_reset.ip", ip_address, message="Too many password reset requests from this address. Please try again later.")
+        if email:
+            enforce_rate_limit("password_reset.email", email, message="Too many password reset requests for this email. Please try again later.")
+    except RateLimitExceeded as exc:
+        return rate_limit_response(exc)
     if not validate_email(email):
         return error_response("A valid email address is required.", 400)
     User = get_user_model()
@@ -348,8 +505,10 @@ def auth_password_reset_confirm(request):
     password = str(data.get("password", ""))
     if not token:
         return error_response("Reset token is required.", 400)
-    if len(password) < 8:
-        return error_response("Password must be at least 8 characters.", 400)
+    try:
+        validate_password(password)
+    except ValidationError as exc:
+        return error_response(exc.messages[0], 400)
     reset_record = models.PasswordResetToken.objects.select_related("user").filter(token=token).first()
     if not reset_record:
         return error_response("Reset token is invalid.", 400)
@@ -360,14 +519,14 @@ def auth_password_reset_confirm(request):
 
     user = reset_record.user
     user.set_password(password)
-    user.save(update_fields=["password"])
+    user.last_password_changed_at = now()
+    user.save(update_fields=["password", "last_password_changed_at", "updated_at"])
     revoke_sessions(user, all_sessions=True)
     reset_record.consumed_at = now()
     reset_record.save(update_fields=["consumed_at"])
-    log_in_user(request, user)
-    session = create_api_session(user, request)
+    access_token, refresh_token, session = issue_auth_session(user, request)
     models.AuthAuditLog.objects.create(user=user, email=user.email or DEFAULT_ACTOR_EMAIL, action="password_reset.confirm")
-    return _auth_success_response(request, user, session)
+    return _auth_success_response(user, access_token, refresh_token, session)
 
 
 @csrf_exempt
@@ -398,9 +557,18 @@ def newsletter_subscribe(request):
 
 @csrf_exempt
 def enrollments(request):
-    if response := guard_method(request, {"POST"}):
+    if response := guard_method(request, {"GET", "POST"}):
         return response
     ensure_seeded()
+    if request.method == "GET":
+        user, email, _session = resolve_actor(request, query=request.GET.dict())
+        course_id = str(request.GET.get("courseId", "")).strip()
+        queryset = models.Enrollment.objects.filter(email=email).select_related("course")
+        if course_id:
+            queryset = queryset.filter(course__slug=course_id)
+        items = [serialize_enrollment(item) for item in queryset]
+        return json_response({"ok": True, "email": email, "count": len(items), "enrollments": items})
+
     data = parse_request_data(request)
     course_id = str(data.get("courseId", "")).strip()
     if not course_id:
@@ -421,6 +589,7 @@ def enrollments(request):
     if user and enrollment.user_id != user.pk:
         enrollment.user = user
         enrollment.save(update_fields=["user"])
+    sync_student_profile_metrics(user=user, email=email)
     if created:
         models.PlatformNotification.objects.create(
             audience_scope=models.PlatformNotification.SCOPE_EMAIL,
@@ -433,17 +602,43 @@ def enrollments(request):
             "ok": True,
             "created": created,
             "course": serialize_course(course),
-            "enrollment": {
-                "id": str(enrollment.pk),
-                "courseId": course.slug,
-                "email": enrollment.email,
-                "status": enrollment.status,
-                "progressPercent": enrollment.progress_percent,
-                "createdAt": isoformat_z(enrollment.created_at),
-            },
+            "enrollment": serialize_enrollment(enrollment),
         },
         status=201 if created else 200,
     )
+
+
+@csrf_exempt
+def enrollment_progress(request):
+    if response := guard_method(request, {"POST"}):
+        return response
+    ensure_seeded()
+    data = parse_request_data(request)
+    user, email, _session = resolve_actor(request, data=data)
+    if not user:
+        return error_response("Authentication required.", 401)
+    course_id = str(data.get("courseId", "")).strip()
+    if not course_id:
+        return error_response("courseId is required.", 400)
+    course = course_by_slug_or_404(course_id)
+    if not course:
+        return error_response("Course not found", 404)
+    try:
+        progress_percent = int(data.get("progressPercent", 0))
+    except (TypeError, ValueError):
+        progress_percent = 0
+    progress_percent = max(0, min(100, progress_percent))
+    enrollment, _created = models.Enrollment.objects.get_or_create(
+        email=email,
+        course=course,
+        defaults={"user": user, "status": "active", "progress_percent": progress_percent},
+    )
+    enrollment.user = user
+    enrollment.progress_percent = progress_percent
+    enrollment.status = "completed" if progress_percent >= 100 else "active"
+    enrollment.save(update_fields=["user", "progress_percent", "status"])
+    sync_student_profile_metrics(user=user, email=email)
+    return json_response({"ok": True, "enrollment": serialize_enrollment(enrollment)})
 
 
 @csrf_exempt
@@ -473,6 +668,7 @@ def wishlist(request):
             item.save(update_fields=["user"])
     else:
         models.WishlistItem.objects.filter(email=email, course=course).delete()
+    sync_student_profile_metrics(user=user, email=email)
     course_ids = list(models.WishlistItem.objects.filter(email=email).values_list("course__slug", flat=True))
     return json_response(
         {
@@ -620,6 +816,8 @@ def instructor_drafts(request):
         return response
     data = parse_request_data(request)
     user, email, _session = resolve_actor(request, data=data)
+    if access_error := require_instructor_access(user):
+        return access_error
     draft = models.InstructorDraftRequest.objects.create(
         user=user,
         email=email,
@@ -650,6 +848,8 @@ def instructor_courses(request):
     if not title or not overview or not instructor:
         return error_response("title, overview, and instructor are required.", 400)
     user, _email, _session = resolve_actor(request, data=data)
+    if access_error := require_instructor_access(user):
+        return access_error
     course, created = create_or_update_course_from_input(input_course, user=user)
     return json_response({"ok": True, "created": created, "course": serialize_course(course)}, status=201 if created else 200)
 
@@ -664,6 +864,9 @@ def instructor_thumbnail(request):
     thumbnail = str(data.get("thumbnail", "")).strip()
     if not course_id:
         return error_response("courseId is required.", 400)
+    user, _email, _session = resolve_actor(request, data=data)
+    if access_error := require_instructor_access(user):
+        return access_error
     course = course_by_slug_or_404(course_id)
     if not course:
         return error_response("Course not found", 404)
@@ -674,8 +877,26 @@ def instructor_thumbnail(request):
 
 @csrf_exempt
 def dashboard_tab(request):
-    if response := guard_method(request, {"POST"}):
+    if response := guard_method(request, {"GET", "POST"}):
         return response
+    if request.method == "GET":
+        user, email, _session = resolve_actor(request, query=request.GET.dict())
+        selection = models.DashboardSelection.objects.filter(email=email).first()
+        return json_response(
+            {
+                "ok": True,
+                "selection": (
+                    {
+                        "id": str(selection.pk),
+                        "tab": selection.tab,
+                        "email": selection.email,
+                        "createdAt": isoformat_z(selection.created_at),
+                    }
+                    if selection
+                    else None
+                ),
+            }
+        )
     data = parse_request_data(request)
     tab = str(data.get("tab", "")).strip()
     if not tab:

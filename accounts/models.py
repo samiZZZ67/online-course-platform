@@ -17,6 +17,14 @@ username_validator = RegexValidator(
 )
 
 
+class TimeStampedModel(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
 class User(AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
         STUDENT = "student", "Student"
@@ -97,6 +105,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.last_password_changed_at = timezone.now()
         self.save(update_fields=["last_password_changed_at", "updated_at"])
 
+    def ensure_student_profile(self):
+        return StudentProfile.objects.get_or_create(user=self)[0]
+
+    def ensure_instructor_profile(self):
+        return InstructorProfile.objects.get_or_create(user=self)[0]
+
     def save(self, *args, **kwargs):
         self.email = (self.email or "").strip().lower()
         self.username = (self.username or "").strip() or None
@@ -106,3 +120,89 @@ class User(AbstractBaseUser, PermissionsMixin):
             self.is_staff = True
         super().save(*args, **kwargs)
 
+
+class StudentProfile(TimeStampedModel):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="student_profile")
+    learning_streak_days = models.PositiveIntegerField(default=0)
+    completed_courses_count = models.PositiveIntegerField(default=0)
+    current_courses_count = models.PositiveIntegerField(default=0)
+    saved_courses_count = models.PositiveIntegerField(default=0)
+    average_progress_percent = models.PositiveSmallIntegerField(default=0)
+    total_learning_minutes = models.PositiveIntegerField(default=0)
+    learning_statistics = models.JSONField(default=dict, blank=True)
+    last_activity_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["user__email"]
+
+    def __str__(self) -> str:
+        return f"Student profile: {self.user.email}"
+
+
+class InstructorProfile(TimeStampedModel):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="instructor_profile")
+    expertise = models.JSONField(default=list, blank=True)
+    biography = models.TextField(blank=True)
+    revenue_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    published_courses_count = models.PositiveIntegerField(default=0)
+    total_students_taught = models.PositiveIntegerField(default=0)
+    average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0)
+    teaching_statistics = models.JSONField(default=dict, blank=True)
+    social_links = models.JSONField(default=dict, blank=True)
+    is_verified_instructor = models.BooleanField(default=False, db_index=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["user__email"]
+
+    def __str__(self) -> str:
+        return f"Instructor profile: {self.user.email}"
+
+    def mark_verified(self) -> None:
+        self.is_verified_instructor = True
+        self.verified_at = timezone.now()
+        self.save(update_fields=["is_verified_instructor", "verified_at", "updated_at"])
+
+
+class RefreshToken(TimeStampedModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="refresh_tokens")
+    jti = models.CharField(max_length=64, unique=True, db_index=True)
+    family_id = models.UUIDField(db_index=True)
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    expires_at = models.DateTimeField(db_index=True)
+    session_expires_at = models.DateTimeField(db_index=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    rotated_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    reuse_detected_at = models.DateTimeField(null=True, blank=True)
+    replaced_by = models.OneToOneField(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="replaces",
+    )
+    created_ip = models.CharField(max_length=64, blank=True)
+    created_user_agent = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Refresh token for {self.user.email} ({self.jti[:12]})"
+
+
+class EmailVerificationToken(TimeStampedModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="email_verification_tokens")
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    expires_at = models.DateTimeField(db_index=True)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    sent_to_email = models.EmailField(blank=True)
+    created_ip = models.CharField(max_length=64, blank=True)
+    created_user_agent = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Email verification token for {self.user.email}"

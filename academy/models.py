@@ -68,6 +68,12 @@ class Course(TimeStampedModel):
 
     class Meta:
         ordering = ["-updated_sort", "title"]
+        permissions = [
+            ("manage_course_students", "Can manage enrolled students for owned courses"),
+            ("view_course_analytics", "Can view instructor course analytics"),
+            ("moderate_courses", "Can moderate and review course catalog content"),
+            ("configure_platform", "Can configure platform settings"),
+        ]
 
     def __str__(self) -> str:
         return self.title
@@ -107,7 +113,11 @@ class AuthAuditLog(TimeStampedModel):
     ACTION_CHOICES = [
         ("signup", "Signup"),
         ("login", "Login"),
+        ("refresh", "Refresh"),
+        ("refresh.reuse_detected", "Refresh Reuse Detected"),
         ("logout", "Logout"),
+        ("verify_email.request", "Verify Email Request"),
+        ("verify_email.confirm", "Verify Email Confirm"),
         ("password_reset.request", "Password Reset Request"),
         ("password_reset.confirm", "Password Reset Confirm"),
     ]

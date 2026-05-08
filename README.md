@@ -26,6 +26,7 @@ The domain models, admin registrations, tests, static assets, and seed logic now
 
 Authentication design for the next implementation step is documented in `docs/authentication-architecture.md`.
 The custom user model design is documented in `docs/custom-user-model.md`.
+The role-based access control design is documented in `docs/rbac-architecture.md`.
 
 ## Test
 
@@ -53,6 +54,9 @@ Then sign in at `http://localhost:3000/admin/`.
 
 - `POST /api/auth/login`
 - `POST /api/auth/signup`
+- `POST /api/auth/refresh`
+- `POST /api/auth/verify-email/request`
+- `GET|POST /api/auth/verify-email/confirm`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
 - `POST /api/auth/oauth/start`
@@ -82,6 +86,8 @@ Then sign in at `http://localhost:3000/admin/`.
 
 `index.html` still remains untouched on disk.
 
-Authentication supports Django-backed users plus API session tokens, current-user lookup, logout, and a local-development password reset flow.
+Authentication now uses short-lived JWT access tokens plus rotating refresh tokens in an `HttpOnly` cookie, with current-user lookup, refresh rotation, logout revocation, reuse detection, and a local-development password reset flow.
 
-The served page also injects a small runtime auth bridge that adds the logout button and connects the frontend auth UI to the Django session endpoints without modifying `index.html` on disk.
+The served page also injects a small runtime auth bridge that adds the logout button, keeps the access token in memory, restores sessions through `/api/auth/refresh`, and connects the frontend auth UI to Django without modifying `index.html` on disk.
+
+Registration now validates passwords with Django validators, generates email-verification tokens, sends verification emails through Django mail, and rate-limits signup and verification-related requests.
