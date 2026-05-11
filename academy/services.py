@@ -300,6 +300,8 @@ def serialize_course(course: models.Course) -> dict[str, Any]:
         "modules": modules,
         "moduleCount": len(modules),
         "freeLessonCount": sum(1 for module in modules for lesson in module.get("lessons", []) if lesson.get("free")),
+        "isCustom": bool(course.is_custom),
+        "createdById": str(course.created_by_id) if course.created_by_id else None,
     }
 
 

@@ -11,6 +11,8 @@
   };
 
   let progressSyncTimer = null;
+  const CUSTOM_COURSES_STORAGE_KEY = "skillforge-custom-courses";
+  const THUMBNAIL_OVERRIDES_STORAGE_KEY = "skillforge-course-thumbnails";
 
   function appState() {
     return window.SkillForgeApp && window.SkillForgeApp.state ? window.SkillForgeApp.state : null;
@@ -129,7 +131,7 @@
     if (shouldAttachAccessToken(url) && !init.headers.Authorization) {
       init.headers.Authorization = "Bearer " + state.accessToken;
     }
-    if (init.body && !init.headers["Content-Type"]) {
+    if (init.body && !(typeof window !== "undefined" && init.body instanceof window.FormData) && !init.headers["Content-Type"]) {
       init.headers["Content-Type"] = "application/json";
     }
     if (isUnsafeMethod(init.method)) {
@@ -170,6 +172,137 @@
       const refreshed = await refreshAccessSession({ preserveState: false });
       if (refreshed) {
         return requestJson(url, Object.assign({}, options || {}, { skipAuthRetry: true }));
+      }
+    }
+    return result;
+  }
+
+  function readStorageJson(key, fallback) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  function writeStorageJson(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      return;
+    }
+  }
+
+  function replaceStoredCustomCourses(courses) {
+    writeStorageJson(
+      CUSTOM_COURSES_STORAGE_KEY,
+      (courses || []).filter(function (course) {
+        return !!(course && course.id);
+      })
+    );
+  }
+
+  function persistCustomCourseSnapshot(course) {
+    if (!course || !course.id || !course.isCustom) {
+      return;
+    }
+    const stored = readStorageJson(CUSTOM_COURSES_STORAGE_KEY, []).filter(function (item) {
+      return item && item.id !== course.id;
+    });
+    stored.push(course);
+    replaceStoredCustomCourses(stored);
+  }
+
+  function updateThumbnailOverrides(courseId, inputValue) {
+    const skillState = appState();
+    const overrides = skillState && skillState.thumbnailOverrides
+      ? Object.assign({}, skillState.thumbnailOverrides)
+      : Object.assign({}, readStorageJson(THUMBNAIL_OVERRIDES_STORAGE_KEY, {}));
+    if (inputValue) {
+      overrides[courseId] = inputValue;
+    } else {
+      delete overrides[courseId];
+    }
+    if (skillState) {
+      skillState.thumbnailOverrides = overrides;
+    }
+    writeStorageJson(THUMBNAIL_OVERRIDES_STORAGE_KEY, overrides);
+  }
+
+  function getThumbnailOverrideValue(courseId) {
+    const skillState = appState();
+    if (skillState && skillState.thumbnailOverrides && skillState.thumbnailOverrides[courseId]) {
+      return skillState.thumbnailOverrides[courseId];
+    }
+    const stored = readStorageJson(THUMBNAIL_OVERRIDES_STORAGE_KEY, {});
+    return stored[courseId] || "";
+  }
+
+  function registerServerCourse(course, options) {
+    if (!course || !course.id || typeof window.registerCourse !== "function") {
+      return;
+    }
+    window.registerCourse(course);
+    if (!options || options.persist !== false) {
+      persistCustomCourseSnapshot(course);
+    }
+  }
+
+  async function syncCourseCatalog(options) {
+    if (typeof window.registerCourse !== "function") {
+      return { response: { ok: false }, data: {} };
+    }
+    const result = await requestJson("/api/courses", { method: "GET" });
+    if (result.response.ok && Array.isArray(result.data.courses)) {
+      result.data.courses.forEach(function (course) {
+        registerServerCourse(course, { persist: false });
+      });
+      replaceStoredCustomCourses(
+        result.data.courses.filter(function (course) {
+          return !!(course && course.isCustom);
+        })
+      );
+      if (!options || options.refresh !== false) {
+        if (typeof window.refreshCourseSurfaces === "function") {
+          window.refreshCourseSurfaces();
+        } else if (typeof window.renderInstructorCourseStudio === "function") {
+          window.renderInstructorCourseStudio();
+        }
+      }
+    }
+    return result;
+  }
+
+  async function persistInstructorCourse(coursePayload) {
+    const result = await requestJson("/api/instructor/courses", {
+      method: "POST",
+      body: JSON.stringify({ course: coursePayload })
+    });
+    if (result.response.ok && result.data.course) {
+      registerServerCourse(result.data.course);
+      if (typeof window.syncInstructorEditorFromSavedCourse === "function") {
+        window.syncInstructorEditorFromSavedCourse(result.data.course);
+      }
+    }
+    return result;
+  }
+
+  async function persistInstructorAsset(courseId, file, lessonId) {
+    const body = new window.FormData();
+    body.append("courseId", courseId);
+    body.append("file", file);
+    if (lessonId) {
+      body.append("lessonId", lessonId);
+    }
+    const result = await requestJson("/api/instructor/courses/assets", {
+      method: "POST",
+      body: body
+    });
+    if (result.response.ok && result.data.course) {
+      registerServerCourse(result.data.course);
+      if (typeof window.syncInstructorEditorFromSavedCourse === "function") {
+        window.syncInstructorEditorFromSavedCourse(result.data.course);
       }
     }
     return result;
@@ -541,6 +674,7 @@
   }
 
   async function refreshAuthState() {
+    await syncCourseCatalog();
     const restored = await refreshAccessSession({ preserveState: false });
     if (restored) {
       await loadEnrollments();
@@ -863,7 +997,6 @@
     }
 
     if (typeof window.handleCreateCourseSubmit === "function") {
-      const originalHandleCreateCourseSubmit = window.handleCreateCourseSubmit;
       window.handleCreateCourseSubmit = async function (event) {
         if (!isInstructorUser()) {
           if (event && typeof event.preventDefault === "function") {
@@ -872,35 +1005,117 @@
           safeToast("Instructor access only", "Only instructor accounts can create courses.", "error");
           return;
         }
-        const result = originalHandleCreateCourseSubmit.apply(this, arguments);
-        const skillState = appState();
-        const courseId = skillState ? skillState.selectedCourseId : null;
-        const course = courseId && typeof window.getCourse === "function" ? window.getCourse(courseId) : null;
-        if (course) {
-          await requestJson("/api/instructor/courses", {
-            method: "POST",
-            body: JSON.stringify({ course: course })
-          });
+        if (event && typeof event.preventDefault === "function") {
+          event.preventDefault();
         }
+        const form = event && event.currentTarget ? event.currentTarget : null;
+        if (!form) {
+          return;
+        }
+        const submitButton = form.querySelector('button[type="submit"]');
+        const formData = Object.fromEntries(new FormData(form).entries());
+        const payload = {
+          title: String(formData.title || "").trim(),
+          cat: String(formData.category || "ai").trim(),
+          instructor: String(formData.instructor || "").trim(),
+          price: String(formData.price || "").trim(),
+          hours: String(formData.hours || "").trim(),
+          lessons: String(formData.lessons || "").trim(),
+          level: String(formData.level || "Beginner").trim(),
+          thumbnail: String(formData.thumbnail || "").trim(),
+          overview: String(formData.overview || "").trim()
+        };
+        if (!payload.title || !payload.instructor || !payload.overview) {
+          safeToast("Course not created", "Title, instructor, and overview are required.", "error");
+          return;
+        }
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.textContent = "Saving...";
+        }
+        const result = await requestJson("/api/instructor/courses", {
+          method: "POST",
+          body: JSON.stringify({ course: payload })
+        });
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = "Save Course";
+        }
+        if (!result.response.ok || !result.data.course) {
+          safeToast("Course not created", result.data.message || "Unable to save this course right now.", "error");
+          return;
+        }
+        registerServerCourse(result.data.course);
+        if (typeof window.syncInstructorEditorFromSavedCourse === "function") {
+          window.syncInstructorEditorFromSavedCourse(result.data.course);
+        }
+        const skillState = appState();
+        if (skillState) {
+          skillState.selectedCourseId = result.data.course.id;
+          skillState.instructorComposerOpen = false;
+        }
+        if (typeof window.openInstructorCourseEditor === "function") {
+          window.openInstructorCourseEditor(result.data.course.id);
+        }
+        form.reset();
+        if (typeof window.refreshCourseSurfaces === "function") {
+          window.refreshCourseSurfaces();
+        }
+        safeToast("Course saved", result.data.course.title + " is now in the live catalog.", "success");
         return result;
       };
     }
 
     if (typeof window.applyCourseThumbnail === "function") {
-      const originalApplyCourseThumbnail = window.applyCourseThumbnail;
       window.applyCourseThumbnail = async function (courseId) {
         if (!isInstructorUser()) {
           safeToast("Instructor access only", "Only instructor accounts can update course thumbnails.", "error");
           return;
         }
-        const result = originalApplyCourseThumbnail.apply(this, arguments);
         const course = typeof window.getCourse === "function" ? window.getCourse(courseId) : null;
-        if (course) {
-          await requestJson("/api/instructor/courses/thumbnail", {
-            method: "POST",
-            body: JSON.stringify({ courseId: courseId, thumbnail: course.thumbnail || "" })
-          });
+        const input = document.getElementById("thumbnail-input-" + courseId);
+        if (!course || !input) {
+          return;
         }
+        const inputValue = input.value.trim();
+        const previousOverrideValue = getThumbnailOverrideValue(courseId);
+        const computedThumbnail = inputValue || (
+          typeof window.createCourseThumbnailData === "function"
+            ? window.createCourseThumbnailData(course)
+            : course.thumbnail
+        );
+        const previousThumbnail = course.thumbnail;
+        course.thumbnail = computedThumbnail;
+        updateThumbnailOverrides(courseId, inputValue);
+        if (typeof window.refreshCourseSurfaces === "function") {
+          window.refreshCourseSurfaces();
+        }
+        const result = await requestJson("/api/instructor/courses/thumbnail", {
+          method: "POST",
+          body: JSON.stringify({ courseId: courseId, thumbnail: computedThumbnail || "" })
+        });
+        if (!result.response.ok || !result.data.course) {
+          course.thumbnail = previousThumbnail;
+          updateThumbnailOverrides(courseId, previousOverrideValue);
+          if (inputValue !== previousOverrideValue && input) {
+            input.value = previousOverrideValue;
+          }
+          if (typeof window.refreshCourseSurfaces === "function") {
+            window.refreshCourseSurfaces();
+          }
+          safeToast("Thumbnail not saved", result.data.message || "Unable to update this thumbnail right now.", "error");
+          return;
+        }
+        registerServerCourse(result.data.course);
+        if (typeof window.syncInstructorEditorFromSavedCourse === "function") {
+          window.syncInstructorEditorFromSavedCourse(result.data.course);
+        }
+        course.thumbnail = result.data.course.thumbnail;
+        updateThumbnailOverrides(courseId, inputValue);
+        if (typeof window.refreshCourseSurfaces === "function") {
+          window.refreshCourseSurfaces();
+        }
+        safeToast(inputValue ? "Thumbnail updated" : "Thumbnail reset", "The course card now uses the saved backend thumbnail.", "success");
         return result;
       };
     }
@@ -909,6 +1124,8 @@
   function installOverrides() {
     document.addEventListener("submit", interceptAuthSubmit, true);
     window.startOAuth = handleOAuthBridge;
+    window.saveInstructorCourseDraftBridge = persistInstructorCourse;
+    window.uploadInstructorCourseAssetBridge = persistInstructorAsset;
     window.handleAuthSubmit = function (event) {
       event.preventDefault();
       handleAuthSubmitBridge(event.currentTarget);

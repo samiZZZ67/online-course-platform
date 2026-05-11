@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import timedelta
+from tempfile import TemporaryDirectory
 
 import jwt
 
@@ -10,6 +11,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.utils import timezone
 
@@ -978,6 +980,7 @@ class SkillForgeApiTests(TestCase):
         created = create_response.json()
         self.assertTrue(created["ok"])
         self.assertEqual(created["course"]["title"], "Backend Systems for Creators")
+        self.assertTrue(created["course"]["isCustom"])
 
         thumbnail_response = self.client.post(
             "/api/instructor/courses/thumbnail",
@@ -986,7 +989,11 @@ class SkillForgeApiTests(TestCase):
         )
         self.assertEqual(thumbnail_response.status_code, 200)
         self.assertEqual(thumbnail_response.json()["course"]["thumbnail"], "https://example.com/thumbnail.png")
+        self.assertTrue(thumbnail_response.json()["course"]["isCustom"])
         self.assertTrue(models.Course.objects.filter(slug=created["course"]["id"]).exists())
+        list_response = self.client.get("/api/courses")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertTrue(any(course["id"] == created["course"]["id"] for course in list_response.json()["courses"]))
 
         self.client.logout()
         student = User.objects.create_user(email="student-blocked@example.com", password="strongpass1", role="student")
@@ -1058,6 +1065,61 @@ class SkillForgeApiTests(TestCase):
         self.assertEqual(course.created_by, instructor)
         self.assertEqual(course.course_modules.count(), 2)
         self.assertEqual(models.CourseLesson.objects.filter(module__course=course).count(), 3)
+
+    def test_instructor_can_upload_lesson_asset_for_player(self):
+        User = get_user_model()
+        instructor = User.objects.create_user(
+            email="asset-author@example.com",
+            password="strongpass1",
+            first_name="Asset",
+            last_name="Author",
+            role="instructor",
+        )
+        self.client.force_login(instructor)
+        create_response = self.client.post(
+            "/api/instructor/courses",
+            data=json.dumps(
+                {
+                    "course": {
+                        "title": "Playable Video Course",
+                        "overview": "A course that should play uploaded media.",
+                        "instructor": "Asset Author",
+                        "cat": "video",
+                        "price": 1800,
+                        "hours": 3,
+                        "modules": [
+                            {
+                                "title": "Launch",
+                                "duration": "30m",
+                                "lessons": [
+                                    {"title": "Watch this first", "duration": "08:00", "type": "video"},
+                                ],
+                            }
+                        ],
+                    }
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        course_payload = create_response.json()["course"]
+        lesson_id = course_payload["modules"][0]["lessons"][0]["id"]
+
+        with TemporaryDirectory() as media_root:
+            with self.settings(MEDIA_ROOT=media_root):
+                upload = SimpleUploadedFile("intro.mp4", b"fake-video-content", content_type="video/mp4")
+                upload_response = self.client.post(
+                    "/api/instructor/courses/assets",
+                    data={"courseId": course_payload["id"], "lessonId": lesson_id, "file": upload},
+                )
+                self.assertEqual(upload_response.status_code, 201)
+                uploaded_payload = upload_response.json()
+                self.assertTrue(uploaded_payload["asset"]["attachedToLesson"])
+                self.assertIn("/media/course-assets/", uploaded_payload["asset"]["url"])
+                self.assertEqual(uploaded_payload["course"]["modules"][0]["lessons"][0]["assetUrl"], uploaded_payload["asset"]["url"])
+
+                lesson = models.CourseLesson.objects.get(lesson_key=lesson_id)
+                self.assertEqual(lesson.asset_url, uploaded_payload["asset"]["url"])
 
     def test_instructor_cannot_modify_another_instructors_course(self):
         User = get_user_model()

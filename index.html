@@ -439,12 +439,16 @@ footer{padding:64px 0 32px;border-top:1px solid var(--border)}
   .stats-grid{grid-template-columns:1fr 1fr}
   .player-layout{grid-template-columns:1fr}
   .studio-grid{grid-template-columns:1fr}
+  .studio-editor-grid{grid-template-columns:1fr}
+  .studio-summary-grid{grid-template-columns:1fr 1fr}
 }
 @media(max-width:600px){
   .features-grid{grid-template-columns:1fr}
   .instructors-grid{grid-template-columns:1fr}
   .footer-grid{grid-template-columns:1fr}
   .stats-grid{grid-template-columns:1fr 1fr}
+  .studio-summary-grid{grid-template-columns:1fr}
+  .studio-inline-grid{grid-template-columns:1fr}
   .hero-stats{grid-template-columns:1fr 1fr 1fr}
   .nav-links{display:none}
 }
@@ -494,10 +498,10 @@ footer{padding:64px 0 32px;border-top:1px solid var(--border)}
 .toast-copy{font-size:.82rem;color:var(--text2);line-height:1.5}
 .mock-note{background:rgba(124,92,252,.08);border:1px solid rgba(124,92,252,.2);border-radius:var(--radius);padding:14px 16px;font-size:.82rem;color:var(--text2)}
 .course-thumb-photo{width:100%;height:100%;object-fit:cover;display:block}
-.studio-shell{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);padding:24px}
-.studio-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
-.studio-grid{display:grid;grid-template-columns:320px 1fr;gap:20px}
-.studio-form{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);padding:20px}
+.studio-shell{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);padding:24px;text-align:left}
+.studio-header{display:flex;align-items:flex-start;justify-content:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.studio-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:20px;align-items:start;justify-content:start}
+.studio-form{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);padding:20px;text-align:left}
 .studio-form h4{margin-bottom:8px}
 .studio-form p{font-size:.85rem;margin-bottom:18px}
 .studio-fields{display:grid;gap:12px}
@@ -511,7 +515,41 @@ footer{padding:64px 0 32px;border-top:1px solid var(--border)}
 .studio-title{font-family:'Syne',sans-serif;font-size:.92rem;font-weight:700;color:var(--text);margin-bottom:4px}
 .studio-meta{font-size:.8rem;color:var(--text3);margin-bottom:12px}
 .studio-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.studio-actions .btn{flex:1;justify-content:center}
+.studio-actions .btn{flex:0 0 auto;justify-content:flex-start}
+.studio-editor{display:grid;gap:16px;justify-items:start;text-align:left}
+.studio-managed-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.studio-managed-item{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px;text-align:left;cursor:pointer;transition:border-color .2s,transform .2s}
+.studio-managed-item:hover{border-color:var(--gold);transform:translateY(-1px)}
+.studio-managed-item.active{border-color:var(--gold);background:rgba(240,165,0,.06)}
+.studio-managed-item-title{font-family:'Syne',sans-serif;font-size:.88rem;font-weight:700;color:var(--text);margin-bottom:6px}
+.studio-managed-item-meta{font-size:.78rem;color:var(--text3)}
+.studio-panel{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);padding:20px;text-align:left;width:100%}
+.studio-panel h4{margin-bottom:8px}
+.studio-panel p{font-size:.84rem;color:var(--text3);margin-bottom:16px}
+.studio-editor-header{display:flex;align-items:flex-start;justify-content:flex-start;gap:16px;flex-wrap:wrap}
+.studio-editor-grid{display:grid;grid-template-columns:340px 1fr;gap:16px}
+.studio-stack{display:grid;gap:12px}
+.studio-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.studio-summary-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.studio-summary-value{font-family:'Syne',sans-serif;font-size:1.15rem;font-weight:800;color:var(--text)}
+.studio-summary-label{font-size:.76rem;color:var(--text3);margin-top:4px}
+.studio-helper{font-size:.78rem;color:var(--text3)}
+.studio-course-preview{aspect-ratio:16/9;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.studio-inline-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.studio-module-card,.studio-lesson-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.studio-module-card{display:grid;gap:12px}
+.studio-module-header,.studio-lesson-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.studio-module-title,.studio-lesson-title{font-family:'Syne',sans-serif;font-size:.86rem;font-weight:700;color:var(--text)}
+.studio-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.18);font-size:.72rem;color:var(--gold);font-weight:700}
+.studio-module-tools,.studio-lesson-tools{display:flex;gap:8px;flex-wrap:wrap}
+.studio-lesson-list{display:grid;gap:12px}
+.studio-checkbox{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--text2)}
+.studio-checkbox input{accent-color:var(--gold)}
+.studio-link{color:var(--gold);text-decoration:none;font-size:.8rem}
+.studio-link:hover{text-decoration:underline}
+.studio-empty{background:var(--bg);border:1px dashed var(--border2);border-radius:var(--radius-xl);padding:24px;text-align:left;color:var(--text3)}
+.player-media-frame,.player-media-video{width:100%;height:100%;border:none;display:block;background:#000}
+.player-media-link{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:12px;padding:24px;text-align:left;color:var(--text2)}
 @media(max-width:600px){
   .search-bar{padding:12px;gap:10px}
   .search-bar button{width:100%;justify-content:center}
@@ -2028,6 +2066,9 @@ const APP=window.SkillForgeApp={
     manualCategory:'all',
     courseFilters:{query:'',category:'all',level:'all',price:'all',sort:'bestselling'},
     instructorComposerOpen:false,
+    instructorEditingCourseId:null,
+    instructorCourseDraft:null,
+    instructorSaving:false,
     homeChat:[
       {role:'user',text:'How do I turn an AI workflow into something I can actually sell to a client?'},
       {role:'bot',text:'Start with one clear business problem, design the prompt flow, connect a small tool layer, and validate it with a single repeatable outcome.'},
@@ -2316,6 +2357,10 @@ function saveStorage(key,value){
   }
 }
 
+function cloneData(value){
+  return JSON.parse(JSON.stringify(value));
+}
+
 function wait(ms){
   return new Promise(resolve=>setTimeout(resolve,ms));
 }
@@ -2527,6 +2572,65 @@ function ensureSelectedLesson(course){
 function getSelectedLesson(course){
   ensureSelectedLesson(course);
   return getFlattenedLessons(course).find(lesson=>lesson.id===APP.state.selectedLessonId)||getFlattenedLessons(course)[0];
+}
+
+function isVideoAssetUrl(url){
+  const value=String(url||'').toLowerCase();
+  return /\.(mp4|webm|mov|m4v|ogg)(\?|#|$)/.test(value)||value.includes('youtube.com')||value.includes('youtu.be')||value.includes('vimeo.com');
+}
+
+function isPdfAssetUrl(url){
+  return /\.pdf(\?|#|$)/i.test(String(url||''));
+}
+
+function getEmbeddableAssetUrl(url){
+  const value=String(url||'').trim();
+  if(!value) return '';
+  const youtubeWatch=value.match(/[?&]v=([^&]+)/);
+  if(youtubeWatch) return `https://www.youtube.com/embed/${youtubeWatch[1]}`;
+  const youtubeShort=value.match(/youtu\.be\/([^?&/]+)/);
+  if(youtubeShort) return `https://www.youtube.com/embed/${youtubeShort[1]}`;
+  const vimeo=value.match(/vimeo\.com\/(\d+)/);
+  if(vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`;
+  return value;
+}
+
+function renderLessonMedia(course,lesson,lessonIndex,totalLessons){
+  const assetUrl=String(lesson.assetUrl||'').trim();
+  if(assetUrl){
+    const embeddableUrl=getEmbeddableAssetUrl(assetUrl);
+    if(isPdfAssetUrl(assetUrl)){
+      return `
+        <iframe class="player-media-frame" src="${escapeHtml(embeddableUrl)}" title="${escapeHtml(lesson.title)} document"></iframe>
+      `;
+    }
+    if(embeddableUrl!==assetUrl&&(assetUrl.includes('youtube.com')||assetUrl.includes('youtu.be')||assetUrl.includes('vimeo.com'))){
+      return `
+        <iframe class="player-media-frame" src="${escapeHtml(embeddableUrl)}" title="${escapeHtml(lesson.title)} video" allowfullscreen></iframe>
+      `;
+    }
+    if(isVideoAssetUrl(assetUrl)){
+      return `
+        <video class="player-media-video" src="${escapeHtml(assetUrl)}" controls preload="metadata"></video>
+      `;
+    }
+    return `
+      <div class="player-media-link">
+        <div style="font-size:3rem">${course.mark}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.05rem;font-weight:700;color:var(--text)">${escapeHtml(lesson.title)}</div>
+        <div style="font-size:.85rem;color:var(--text3)">Module ${lesson.moduleIndex+1} · Lesson ${lessonIndex+1} of ${totalLessons}</div>
+        <a class="btn btn-primary btn-sm" href="${escapeHtml(assetUrl)}" target="_blank" rel="noopener noreferrer">Open Lesson Asset</a>
+      </div>
+    `;
+  }
+  return `
+    <div class="player-vid-placeholder">
+      <div style="font-size:4rem">${course.mark}</div>
+      <div style="font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;color:var(--text)">${escapeHtml(lesson.title)}</div>
+      <div style="font-size:.85rem;color:var(--text3)">Module ${lesson.moduleIndex+1} · Lesson ${lessonIndex+1} of ${totalLessons} · ${escapeHtml(lesson.duration)}</div>
+      <div class="play-btn" style="width:72px;height:72px" onclick="togglePlayback()"><div class="play-icon" style="border-width:13px 0 13px 22px"></div></div>
+    </div>
+  `;
 }
 
 function getPlayerThread(course){
@@ -3213,6 +3317,14 @@ function renderPlayer(){
       </div>
     </div>
   `;
+  const playerMediaHost=view.querySelector('.player-video');
+  if(playerMediaHost){
+    playerMediaHost.innerHTML=renderLessonMedia(course,lesson,lessonIndex,lessons.length);
+  }
+  const playerControls=view.querySelector('.player-controls');
+  if(playerControls&&String(lesson.assetUrl||'').trim()){
+    playerControls.style.display='none';
+  }
 }
 
 function renderChatMessages(thread){
@@ -3405,6 +3517,361 @@ function resetCourseThumbnail(courseId){
   applyCourseThumbnail(courseId);
 }
 
+function canManageInstructorCourse(course){
+  const currentUser=APP.state.currentUser;
+  if(!currentUser||!course) return false;
+  if(currentUser.role==='admin') return true;
+  return Boolean(course.isCustom)&&String(course.createdById||'')===String(currentUser.id||'');
+}
+
+function getManagedInstructorCourses(){
+  return [...COURSE_DATA]
+    .filter(canManageInstructorCourse)
+    .sort((left,right)=>left.title.localeCompare(right.title));
+}
+
+function buildInstructorLessonDraft(courseId,moduleIndex,lessonIndex,lesson={}){
+  const lessonId=lesson.id||lesson.lessonId||slugify(`${courseId||'course'}-m${moduleIndex+1}-l${lessonIndex+1}-${Math.random().toString(36).slice(2,8)}`);
+  return {
+    id:lessonId,
+    title:String(lesson.title||`Lesson ${lessonIndex+1}`).trim()||`Lesson ${lessonIndex+1}`,
+    duration:String(lesson.duration||'12:00').trim()||'12:00',
+    type:['video','quiz','pdf','assignment'].includes(lesson.type)?lesson.type:'video',
+    free:Boolean(lesson.free),
+    done:Boolean(lesson.done),
+    summary:String(lesson.summary||lesson.description||'').trim(),
+    assetUrl:String(lesson.assetUrl||lesson.url||'').trim(),
+    metadata:cloneData(lesson.metadata||{})
+  };
+}
+
+function buildInstructorModuleDraft(courseId,moduleIndex,module={}){
+  const lessons=Array.isArray(module.lessons)&&module.lessons.length
+    ? module.lessons.map((lesson,lessonIndex)=>buildInstructorLessonDraft(courseId,moduleIndex,lessonIndex,lesson))
+    : [buildInstructorLessonDraft(courseId,moduleIndex,0,{free:true})];
+  return {
+    id:module.id||slugify(`${courseId||'course'}-m${moduleIndex+1}`),
+    title:String(module.title||`Module ${moduleIndex+1}`).trim()||`Module ${moduleIndex+1}`,
+    duration:String(module.duration||'45m').trim()||'45m',
+    summary:String(module.summary||module.description||'').trim(),
+    lessons
+  };
+}
+
+function countInstructorLessons(course){
+  return (course.modules||[]).reduce((total,module)=>total+(module.lessons||[]).length,0);
+}
+
+function countInstructorUploadedLessons(course){
+  return (course.modules||[]).reduce((total,module)=>total+(module.lessons||[]).filter(lesson=>String(lesson.assetUrl||'').trim()).length,0);
+}
+
+function countInstructorFreeLessons(course){
+  return (course.modules||[]).reduce((total,module)=>total+(module.lessons||[]).filter(lesson=>lesson.free).length,0);
+}
+
+function buildInstructorCourseDraft(course){
+  const categoryKey=course&&course.cat in CATEGORY_LIBRARY?course.cat:'ai';
+  const category=CATEGORY_LIBRARY[categoryKey];
+  const next=cloneData(course||{});
+  next.id=next.id||slugify(next.title||`course-${Date.now()}`);
+  next.cat=categoryKey;
+  next.mark=next.mark||getCategoryMark(categoryKey);
+  next.gradient=next.gradient||getCategoryGradient(categoryKey);
+  next.badgeClass=next.badgeClass||category.badgeClass;
+  next.track=next.track||category.label;
+  next.title=String(next.title||'').trim();
+  next.instructor=String(next.instructor||'').trim();
+  next.priceValue=Math.max(0,parseInt(String(next.priceValue??next.price??0).replace(/[^\d]/g,''),10)||0);
+  next.price=next.priceValue.toLocaleString('en-US');
+  next.hours=Math.max(1,parseInt(next.hours,10)||1);
+  next.level=next.level||'Beginner';
+  next.overview=String(next.overview||'').trim();
+  next.thumbnail=String(next.thumbnail||'').trim()||createCourseThumbnailData(next);
+  next.badge=String(next.badge||'Draft').trim()||'Draft';
+  next.rating=typeof next.rating==='number'?next.rating:parseFloat(next.rating||4.8)||4.8;
+  next.reviews=Math.max(0,parseInt(next.reviews,10)||0);
+  next.students=Math.max(0,parseInt(next.students,10)||0);
+  next.projects=Math.max(1,parseInt(next.projects,10)||Math.round(next.hours/3)||1);
+  next.requirements=Array.isArray(next.requirements)&&next.requirements.length?cloneData(next.requirements):cloneData(category.requirements);
+  next.learn=Array.isArray(next.learn)&&next.learn.length?cloneData(next.learn):cloneData(category.learn);
+  next.resources=Array.isArray(next.resources)&&next.resources.length?cloneData(next.resources):cloneData(category.resources);
+  next.qa=Array.isArray(next.qa)&&next.qa.length?cloneData(next.qa):cloneData(category.qa);
+  next.modules=(Array.isArray(next.modules)?next.modules:[]).map((module,moduleIndex)=>buildInstructorModuleDraft(next.id,moduleIndex,module));
+  if(!next.modules.length){
+    next.modules=[buildInstructorModuleDraft(next.id,0,{})];
+  }
+  next.lessons=countInstructorLessons(next);
+  return next;
+}
+
+function ensureInstructorEditorDraft(){
+  const managedCourses=getManagedInstructorCourses();
+  if(!managedCourses.length){
+    APP.state.instructorEditingCourseId=null;
+    APP.state.instructorCourseDraft=null;
+    return {managedCourses,draft:null};
+  }
+  if(!managedCourses.some(course=>course.id===APP.state.instructorEditingCourseId)){
+    APP.state.instructorEditingCourseId=managedCourses[0].id;
+  }
+  if(!APP.state.instructorCourseDraft||APP.state.instructorCourseDraft.id!==APP.state.instructorEditingCourseId){
+    const selectedCourse=managedCourses.find(course=>course.id===APP.state.instructorEditingCourseId);
+    APP.state.instructorCourseDraft=buildInstructorCourseDraft(selectedCourse);
+  }
+  return {managedCourses,draft:APP.state.instructorCourseDraft};
+}
+
+function openInstructorCourseEditor(courseId){
+  const course=getManagedInstructorCourses().find(item=>item.id===courseId)||getCourse(courseId);
+  if(!course) return;
+  APP.state.instructorEditingCourseId=course.id;
+  APP.state.instructorCourseDraft=buildInstructorCourseDraft(course);
+  APP.state.selectedCourseId=course.id;
+  APP.state.instructorComposerOpen=false;
+  renderInstructorCourseStudio();
+}
+
+function resetInstructorCourseDraft(){
+  const courseId=APP.state.instructorEditingCourseId;
+  if(!courseId) return;
+  APP.state.instructorCourseDraft=buildInstructorCourseDraft(getCourse(courseId));
+  renderInstructorCourseStudio();
+}
+
+function syncInstructorEditorFromSavedCourse(course){
+  if(!course||!course.id) return;
+  if(APP.state.instructorEditingCourseId===course.id){
+    APP.state.instructorCourseDraft=buildInstructorCourseDraft(course);
+  }
+}
+
+function updateInstructorCourseField(field,value){
+  const draft=APP.state.instructorCourseDraft;
+  if(!draft) return;
+  if(field==='cat'&&value in CATEGORY_LIBRARY){
+    draft.cat=value;
+    draft.track=CATEGORY_LIBRARY[value].label;
+    draft.mark=getCategoryMark(value);
+    draft.gradient=getCategoryGradient(value);
+    draft.badgeClass=CATEGORY_LIBRARY[value].badgeClass;
+    renderInstructorCourseStudio();
+    return;
+  }
+  if(field==='priceValue'){
+    draft.priceValue=Math.max(0,parseInt(String(value).replace(/[^\d]/g,''),10)||0);
+    draft.price=draft.priceValue.toLocaleString('en-US');
+    return;
+  }
+  if(field==='hours'){
+    draft.hours=Math.max(1,parseInt(value,10)||1);
+    draft.projects=Math.max(1,Math.round(draft.hours/3)||1);
+    return;
+  }
+  if(field==='thumbnail'){
+    draft.thumbnail=String(value||'').trim()||createCourseThumbnailData(draft);
+    return;
+  }
+  draft[field]=typeof value==='string'?value:value;
+}
+
+function useInstructorAutoThumbnail(){
+  const draft=APP.state.instructorCourseDraft;
+  if(!draft) return;
+  draft.thumbnail=createCourseThumbnailData(draft);
+  renderInstructorCourseStudio();
+}
+
+function updateInstructorModuleField(moduleIndex,field,value){
+  const draft=APP.state.instructorCourseDraft;
+  const module=draft&&draft.modules[moduleIndex];
+  if(!module) return;
+  module[field]=typeof value==='string'?value:value;
+}
+
+function updateInstructorLessonField(moduleIndex,lessonIndex,field,value){
+  const draft=APP.state.instructorCourseDraft;
+  const lesson=draft&&draft.modules[moduleIndex]&&draft.modules[moduleIndex].lessons[lessonIndex];
+  if(!lesson) return;
+  lesson[field]=field==='free'?Boolean(value):value;
+}
+
+function addInstructorModule(){
+  const draft=APP.state.instructorCourseDraft;
+  if(!draft) return;
+  draft.modules.push(buildInstructorModuleDraft(draft.id,draft.modules.length,{}));
+  draft.lessons=countInstructorLessons(draft);
+  renderInstructorCourseStudio();
+}
+
+function removeInstructorModule(moduleIndex){
+  const draft=APP.state.instructorCourseDraft;
+  if(!draft||!draft.modules[moduleIndex]) return;
+  draft.modules.splice(moduleIndex,1);
+  draft.lessons=countInstructorLessons(draft);
+  renderInstructorCourseStudio();
+}
+
+function moveInstructorModule(moduleIndex,direction){
+  const draft=APP.state.instructorCourseDraft;
+  if(!draft) return;
+  const targetIndex=moduleIndex+direction;
+  if(targetIndex<0||targetIndex>=draft.modules.length) return;
+  [draft.modules[moduleIndex],draft.modules[targetIndex]]=[draft.modules[targetIndex],draft.modules[moduleIndex]];
+  renderInstructorCourseStudio();
+}
+
+function addInstructorLesson(moduleIndex){
+  const draft=APP.state.instructorCourseDraft;
+  const module=draft&&draft.modules[moduleIndex];
+  if(!module) return;
+  module.lessons.push(buildInstructorLessonDraft(draft.id,moduleIndex,module.lessons.length,{}));
+  draft.lessons=countInstructorLessons(draft);
+  renderInstructorCourseStudio();
+}
+
+function removeInstructorLesson(moduleIndex,lessonIndex){
+  const draft=APP.state.instructorCourseDraft;
+  const module=draft&&draft.modules[moduleIndex];
+  if(!module||!module.lessons[lessonIndex]) return;
+  module.lessons.splice(lessonIndex,1);
+  draft.lessons=countInstructorLessons(draft);
+  renderInstructorCourseStudio();
+}
+
+function moveInstructorLesson(moduleIndex,lessonIndex,direction){
+  const draft=APP.state.instructorCourseDraft;
+  const module=draft&&draft.modules[moduleIndex];
+  if(!module) return;
+  const targetIndex=lessonIndex+direction;
+  if(targetIndex<0||targetIndex>=module.lessons.length) return;
+  [module.lessons[lessonIndex],module.lessons[targetIndex]]=[module.lessons[targetIndex],module.lessons[lessonIndex]];
+  renderInstructorCourseStudio();
+}
+
+function buildInstructorCoursePayload(draft){
+  const category=CATEGORY_LIBRARY[draft.cat]||CATEGORY_LIBRARY.ai;
+  const modules=(draft.modules||[]).map((module,moduleIndex)=>({
+    id:module.id||slugify(`${draft.id}-m${moduleIndex+1}`),
+    title:String(module.title||`Module ${moduleIndex+1}`).trim()||`Module ${moduleIndex+1}`,
+    duration:String(module.duration||'').trim(),
+    summary:String(module.summary||'').trim(),
+    lessons:(module.lessons||[]).map((lesson,lessonIndex)=>({
+      id:lesson.id||slugify(`${draft.id}-m${moduleIndex+1}-l${lessonIndex+1}`),
+      title:String(lesson.title||`Lesson ${lessonIndex+1}`).trim()||`Lesson ${lessonIndex+1}`,
+      duration:String(lesson.duration||'').trim(),
+      type:['video','quiz','pdf','assignment'].includes(lesson.type)?lesson.type:'video',
+      free:Boolean(lesson.free),
+      summary:String(lesson.summary||'').trim(),
+      assetUrl:String(lesson.assetUrl||'').trim(),
+      metadata:cloneData(lesson.metadata||{})
+    }))
+  }));
+  return {
+    id:draft.id,
+    cat:draft.cat,
+    title:String(draft.title||'').trim(),
+    instructor:String(draft.instructor||'').trim(),
+    price:draft.priceValue||0,
+    hours:Math.max(1,parseInt(draft.hours,10)||1),
+    level:draft.level||'Beginner',
+    overview:String(draft.overview||'').trim(),
+    thumbnail:String(draft.thumbnail||'').trim(),
+    badge:String(draft.badge||'Draft').trim()||'Draft',
+    rating:Math.max(0,Math.min(5,Number(draft.rating)||4.8)),
+    reviews:Math.max(0,parseInt(draft.reviews,10)||0),
+    students:Math.max(0,parseInt(draft.students,10)||0),
+    projects:Math.max(1,parseInt(draft.projects,10)||Math.round((parseInt(draft.hours,10)||1)/3)||1),
+    mark:getCategoryMark(draft.cat),
+    gradient:getCategoryGradient(draft.cat),
+    badgeClass:category.badgeClass,
+    track:category.label,
+    requirements:cloneData(Array.isArray(draft.requirements)&&draft.requirements.length?draft.requirements:category.requirements),
+    learn:cloneData(Array.isArray(draft.learn)&&draft.learn.length?draft.learn:category.learn),
+    resources:cloneData(Array.isArray(draft.resources)&&draft.resources.length?draft.resources:category.resources),
+    qa:cloneData(Array.isArray(draft.qa)&&draft.qa.length?draft.qa:category.qa),
+    modules
+  };
+}
+
+function validateInstructorCourseDraft(draft){
+  if(!draft) return 'Select a course first.';
+  if(!String(draft.title||'').trim()||!String(draft.instructor||'').trim()||!String(draft.overview||'').trim()){
+    return 'Title, instructor, and overview are required.';
+  }
+  if(!Array.isArray(draft.modules)||!draft.modules.length){
+    return 'Add at least one module before saving.';
+  }
+  for(const module of draft.modules){
+    if(!String(module.title||'').trim()){
+      return 'Every module needs a title.';
+    }
+    if(!Array.isArray(module.lessons)||!module.lessons.length){
+      return `Add at least one lesson in ${module.title||'each module'}.`;
+    }
+    for(const lesson of module.lessons){
+      if(!String(lesson.title||'').trim()){
+        return 'Every lesson needs a title.';
+      }
+    }
+  }
+  return '';
+}
+
+async function saveInstructorCourseDraft(){
+  const draft=APP.state.instructorCourseDraft;
+  const errorMessage=validateInstructorCourseDraft(draft);
+  if(errorMessage){
+    showToast('Course not saved',errorMessage,'error');
+    return;
+  }
+  if(typeof window.saveInstructorCourseDraftBridge!=='function'){
+    showToast('Sign in required','The authenticated course save bridge is not available yet. Refresh your session and try again.','error');
+    return;
+  }
+  APP.state.instructorSaving=true;
+  renderInstructorCourseStudio();
+  const result=await window.saveInstructorCourseDraftBridge(buildInstructorCoursePayload(draft));
+  APP.state.instructorSaving=false;
+  if(!result.response.ok||!result.data.course){
+    renderInstructorCourseStudio();
+    showToast('Course not saved',result.data.message||'Unable to save this course right now.','error');
+    return;
+  }
+  APP.state.selectedCourseId=result.data.course.id;
+  APP.state.instructorEditingCourseId=result.data.course.id;
+  APP.state.instructorCourseDraft=buildInstructorCourseDraft(result.data.course);
+  refreshCourseSurfaces();
+  showToast('Course saved','Modules, lessons, and lesson assets are now live in the course player.','success');
+}
+
+async function uploadInstructorLessonAsset(moduleIndex,lessonIndex){
+  const draft=APP.state.instructorCourseDraft;
+  const lesson=draft&&draft.modules[moduleIndex]&&draft.modules[moduleIndex].lessons[lessonIndex];
+  const input=document.getElementById(`lesson-asset-file-${moduleIndex}-${lessonIndex}`);
+  if(!draft||!lesson||!input||!input.files||!input.files[0]){
+    showToast('No file selected','Choose a video or PDF file for this lesson first.','error');
+    return;
+  }
+  if(typeof window.uploadInstructorCourseAssetBridge!=='function'){
+    showToast('Upload unavailable','The authenticated asset upload bridge is not ready. Refresh your session and try again.','error');
+    return;
+  }
+  const result=await window.uploadInstructorCourseAssetBridge(draft.id,input.files[0],lesson.id);
+  if(!result.response.ok||!result.data.asset){
+    showToast('Upload failed',result.data.message||'Unable to upload this lesson asset right now.','error');
+    return;
+  }
+  lesson.assetUrl=result.data.asset.url;
+  if(result.data.course){
+    APP.state.instructorCourseDraft=buildInstructorCourseDraft(result.data.course);
+  }else{
+    APP.state.instructorCourseDraft=buildInstructorCourseDraft(draft);
+  }
+  refreshCourseSurfaces();
+  showToast('Asset uploaded','This lesson now has a playable asset and is ready in the course player.','success');
+}
+
 function renderInstructorCourseStudio(){
   const mount=document.getElementById('instructorCourseStudio');
   if(!mount) return;
@@ -3474,6 +3941,205 @@ function renderInstructorCourseStudio(){
               </div>
             `).join('')}
           </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderInstructorCourseStudio(){
+  const mount=document.getElementById('instructorCourseStudio');
+  if(!mount) return;
+  const {managedCourses,draft}=ensureInstructorEditorDraft();
+  mount.innerHTML=`
+    <div class="studio-shell">
+      <div class="studio-header">
+        <div>
+          <div class="dash-section-title">Course Studio</div>
+          <p style="font-size:.84rem;color:var(--text3);margin-top:4px">Create courses, edit modules and lessons, upload lesson assets, and keep the player ready to stream uploaded videos.</p>
+        </div>
+        <button class="btn btn-primary btn-sm" type="button" onclick="toggleCourseComposer()">${APP.state.instructorComposerOpen?'Close Composer':'Add Course'}</button>
+      </div>
+      <div class="studio-grid">
+        <div class="studio-form">
+          ${APP.state.instructorComposerOpen?`
+            <form id="createCourseForm" onsubmit="handleCreateCourseSubmit(event)">
+              <h4>Add Course</h4>
+              <p>Create the course shell first, then open it below to manage modules, lessons, videos, PDFs, and previews.</p>
+              <div class="studio-fields">
+                <input class="studio-input" name="title" placeholder="Course title" required>
+                <select class="studio-select" name="category">
+                  ${Object.entries(CATEGORY_LIBRARY).map(([key,value])=>`<option value="${key}">${escapeHtml(value.label)}</option>`).join('')}
+                </select>
+                <input class="studio-input" name="instructor" placeholder="Instructor name" value="Yonas Tesfaye" required>
+                <input class="studio-input" name="price" type="number" min="0" placeholder="Price in ETB" required>
+                <div class="studio-inline-grid">
+                  <input class="studio-input" name="hours" type="number" min="1" placeholder="Hours" required>
+                  <input class="studio-input" name="lessons" type="number" min="1" placeholder="Lessons" required>
+                </div>
+                <select class="studio-select" name="level">
+                  <option value="Beginner">Beginner</option>
+                  <option value="Intermediate">Intermediate</option>
+                </select>
+                <input class="studio-input" name="thumbnail" placeholder="Optional thumbnail URL">
+                <textarea class="studio-textarea" name="overview" placeholder="Short course overview" required></textarea>
+                <button class="btn btn-primary" type="submit" style="justify-content:center">Create Course</button>
+              </div>
+            </form>
+          `:`
+            <h4>Add Course</h4>
+            <p>Create a new course shell, then use the curriculum editor to manage modules, lessons, and uploaded lesson files.</p>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="toggleCourseComposer(true)">Open Composer</button>
+          `}
+        </div>
+        <div class="studio-editor">
+          <div class="studio-panel">
+            <div class="studio-editor-header">
+              <div>
+                <h4>Your Managed Courses</h4>
+                <p>Select a course to edit its curriculum and lesson media.</p>
+              </div>
+            </div>
+            ${managedCourses.length?`
+              <div class="studio-managed-list">
+                ${managedCourses.map(course=>`
+                  <button class="studio-managed-item ${draft&&draft.id===course.id?'active':''}" type="button" onclick="openInstructorCourseEditor('${course.id}')">
+                    <div class="studio-managed-item-title">${escapeHtml(course.title)}</div>
+                    <div class="studio-managed-item-meta">${escapeHtml(course.track||CATEGORY_LIBRARY[course.cat]?.label||'Course')} · ${(course.moduleCount||course.modules.length)} modules · ${course.lessons} lessons</div>
+                  </button>
+                `).join('')}
+              </div>
+            `:`
+              <div class="studio-empty">Create a course first. Once it exists, this editor will let you add modules, lessons, upload videos or PDFs, and play them from the lesson player.</div>
+            `}
+          </div>
+          ${draft?`
+            <div class="studio-panel">
+              <div class="studio-editor-header">
+                <div>
+                  <h4>${escapeHtml(draft.title||'Untitled Course')}</h4>
+                  <p>Uploaded lesson assets are playable in the course player as soon as they are attached.</p>
+                </div>
+                <div class="studio-actions" style="margin-top:0">
+                  <button class="btn btn-ghost btn-sm" type="button" onclick="openCourse('${draft.id}')">Preview Course</button>
+                  <button class="btn btn-ghost btn-sm" type="button" onclick="resetInstructorCourseDraft()">Reset Draft</button>
+                  <button class="btn btn-primary btn-sm" type="button" onclick="saveInstructorCourseDraft()" ${APP.state.instructorSaving?'disabled':''}>${APP.state.instructorSaving?'Saving...':'Save Course'}</button>
+                </div>
+              </div>
+              <div class="studio-summary-grid">
+                <div class="studio-summary-card"><div class="studio-summary-value">${draft.modules.length}</div><div class="studio-summary-label">Modules</div></div>
+                <div class="studio-summary-card"><div class="studio-summary-value">${countInstructorLessons(draft)}</div><div class="studio-summary-label">Lessons</div></div>
+                <div class="studio-summary-card"><div class="studio-summary-value">${countInstructorUploadedLessons(draft)}</div><div class="studio-summary-label">Lessons With Assets</div></div>
+                <div class="studio-summary-card"><div class="studio-summary-value">${countInstructorFreeLessons(draft)}</div><div class="studio-summary-label">Free Preview Lessons</div></div>
+              </div>
+            </div>
+            <div class="studio-editor-grid">
+              <div class="studio-panel studio-stack">
+                <div>
+                  <h4>Course Details</h4>
+                  <p>Update your public course information and thumbnail preview.</p>
+                </div>
+                <div class="studio-course-preview">
+                  <img class="course-thumb-photo" src="${escapeHtml(draft.thumbnail)}" alt="${escapeHtml(draft.title||'Course')} thumbnail">
+                </div>
+                <div class="studio-fields">
+                  <input class="studio-input" value="${escapeHtml(draft.title)}" placeholder="Course title" oninput="updateInstructorCourseField('title', this.value)">
+                  <select class="studio-select" onchange="updateInstructorCourseField('cat', this.value)">
+                    ${Object.entries(CATEGORY_LIBRARY).map(([key,value])=>`<option value="${key}" ${draft.cat===key?'selected':''}>${escapeHtml(value.label)}</option>`).join('')}
+                  </select>
+                  <input class="studio-input" value="${escapeHtml(draft.instructor)}" placeholder="Instructor name" oninput="updateInstructorCourseField('instructor', this.value)">
+                  <div class="studio-inline-grid">
+                    <input class="studio-input" type="number" min="0" value="${draft.priceValue}" placeholder="Price" oninput="updateInstructorCourseField('priceValue', this.value)">
+                    <input class="studio-input" type="number" min="1" value="${draft.hours}" placeholder="Hours" oninput="updateInstructorCourseField('hours', this.value)">
+                  </div>
+                  <select class="studio-select" onchange="updateInstructorCourseField('level', this.value)">
+                    <option value="Beginner" ${draft.level==='Beginner'?'selected':''}>Beginner</option>
+                    <option value="Intermediate" ${draft.level==='Intermediate'?'selected':''}>Intermediate</option>
+                    <option value="Advanced" ${draft.level==='Advanced'?'selected':''}>Advanced</option>
+                  </select>
+                  <input class="studio-input" value="${escapeHtml(draft.badge)}" placeholder="Badge label" oninput="updateInstructorCourseField('badge', this.value)">
+                  <input class="studio-input" id="thumbnail-input-${draft.id}" value="${escapeHtml(draft.thumbnail)}" placeholder="Thumbnail URL" onchange="updateInstructorCourseField('thumbnail', this.value)">
+                  <div class="studio-actions" style="margin-top:0">
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="useInstructorAutoThumbnail()">Auto Thumbnail</button>
+                    <button class="btn btn-primary btn-sm" type="button" onclick="renderInstructorCourseStudio()">Refresh Preview</button>
+                  </div>
+                  <textarea class="studio-textarea" placeholder="Course overview" oninput="updateInstructorCourseField('overview', this.value)">${escapeHtml(draft.overview)}</textarea>
+                </div>
+                <div class="studio-helper">Tip: uploaded video or PDF lesson assets use the lesson asset URL, not the course thumbnail field.</div>
+              </div>
+              <div class="studio-panel studio-stack">
+                <div class="studio-editor-header">
+                  <div>
+                    <h4>Curriculum</h4>
+                    <p>Add modules, organize lessons, and upload playable lesson files.</p>
+                  </div>
+                  <div class="studio-actions" style="margin-top:0">
+                    <button class="btn btn-primary btn-sm" type="button" onclick="addInstructorModule()">Add Module</button>
+                  </div>
+                </div>
+                ${(draft.modules||[]).map((module,moduleIndex)=>`
+                  <div class="studio-module-card">
+                    <div class="studio-module-header">
+                      <div>
+                        <div class="studio-module-title">Module ${moduleIndex+1}</div>
+                        <div class="studio-helper">${(module.lessons||[]).length} lessons</div>
+                      </div>
+                      <div class="studio-module-tools">
+                        <button class="btn btn-ghost btn-sm" type="button" onclick="moveInstructorModule(${moduleIndex}, -1)">Up</button>
+                        <button class="btn btn-ghost btn-sm" type="button" onclick="moveInstructorModule(${moduleIndex}, 1)">Down</button>
+                        <button class="btn btn-ghost btn-sm" type="button" onclick="removeInstructorModule(${moduleIndex})">Remove</button>
+                      </div>
+                    </div>
+                    <div class="studio-inline-grid">
+                      <input class="studio-input" value="${escapeHtml(module.title)}" placeholder="Module title" oninput="updateInstructorModuleField(${moduleIndex}, 'title', this.value)">
+                      <input class="studio-input" value="${escapeHtml(module.duration)}" placeholder="Module duration" oninput="updateInstructorModuleField(${moduleIndex}, 'duration', this.value)">
+                    </div>
+                    <textarea class="studio-textarea" placeholder="Module summary" oninput="updateInstructorModuleField(${moduleIndex}, 'summary', this.value)">${escapeHtml(module.summary||'')}</textarea>
+                    <div class="studio-lesson-list">
+                      ${(module.lessons||[]).map((lesson,lessonIndex)=>`
+                        <div class="studio-lesson-card">
+                          <div class="studio-lesson-header">
+                            <div>
+                              <div class="studio-lesson-title">Lesson ${lessonIndex+1}</div>
+                              <div class="studio-helper">${lesson.type.toUpperCase()}${lesson.assetUrl?' · asset ready':' · add video or PDF'}</div>
+                            </div>
+                            <div class="studio-lesson-tools">
+                              <button class="btn btn-ghost btn-sm" type="button" onclick="moveInstructorLesson(${moduleIndex}, ${lessonIndex}, -1)">Up</button>
+                              <button class="btn btn-ghost btn-sm" type="button" onclick="moveInstructorLesson(${moduleIndex}, ${lessonIndex}, 1)">Down</button>
+                              <button class="btn btn-ghost btn-sm" type="button" onclick="removeInstructorLesson(${moduleIndex}, ${lessonIndex})">Remove</button>
+                            </div>
+                          </div>
+                          <div class="studio-fields">
+                            <input class="studio-input" value="${escapeHtml(lesson.title)}" placeholder="Lesson title" oninput="updateInstructorLessonField(${moduleIndex}, ${lessonIndex}, 'title', this.value)">
+                            <div class="studio-inline-grid">
+                              <input class="studio-input" value="${escapeHtml(lesson.duration)}" placeholder="Duration" oninput="updateInstructorLessonField(${moduleIndex}, ${lessonIndex}, 'duration', this.value)">
+                              <select class="studio-select" onchange="updateInstructorLessonField(${moduleIndex}, ${lessonIndex}, 'type', this.value)">
+                                ${['video','quiz','pdf','assignment'].map(type=>`<option value="${type}" ${lesson.type===type?'selected':''}>${type.toUpperCase()}</option>`).join('')}
+                              </select>
+                            </div>
+                            <input class="studio-input" value="${escapeHtml(lesson.assetUrl||'')}" placeholder="Lesson asset URL or uploaded media path" oninput="updateInstructorLessonField(${moduleIndex}, ${lessonIndex}, 'assetUrl', this.value)">
+                            <textarea class="studio-textarea" placeholder="Lesson summary" oninput="updateInstructorLessonField(${moduleIndex}, ${lessonIndex}, 'summary', this.value)">${escapeHtml(lesson.summary||'')}</textarea>
+                            <label class="studio-checkbox">
+                              <input type="checkbox" ${lesson.free?'checked':''} onchange="updateInstructorLessonField(${moduleIndex}, ${lessonIndex}, 'free', this.checked)">
+                              <span>Free preview lesson</span>
+                            </label>
+                            <div class="studio-inline-grid">
+                              <input class="studio-input" id="lesson-asset-file-${moduleIndex}-${lessonIndex}" type="file" accept="video/*,.pdf,.mov,.webm,.mp4,.m4v">
+                              <button class="btn btn-primary btn-sm" type="button" onclick="uploadInstructorLessonAsset(${moduleIndex}, ${lessonIndex})">Upload File</button>
+                            </div>
+                            ${lesson.assetUrl?`<a class="studio-link" href="${escapeHtml(lesson.assetUrl)}" target="_blank" rel="noopener noreferrer">Open current lesson asset</a>`:`<div class="studio-helper">No file linked yet. Paste a hosted URL or upload a video/PDF above.</div>`}
+                          </div>
+                        </div>
+                      `).join('')}
+                    </div>
+                    <div class="studio-actions" style="margin-top:0">
+                      <button class="btn btn-ghost btn-sm" type="button" onclick="addInstructorLesson(${moduleIndex})">Add Lesson</button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `:''}
         </div>
       </div>
     </div>

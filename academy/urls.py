@@ -64,6 +64,7 @@ urlpatterns = [
     path("api/notifications", views.notifications, name="notifications"),
     path("api/instructor/courses/drafts", views.instructor_drafts, name="instructor-drafts"),
     path("api/instructor/courses", views.instructor_courses, name="instructor-courses"),
+    path("api/instructor/courses/assets", views.instructor_course_assets, name="instructor-course-assets"),
     path("api/instructor/courses/thumbnail", views.instructor_thumbnail, name="instructor-thumbnail"),
     path("api/dashboard/tab", views.dashboard_tab, name="dashboard-tab"),
     path("api/certificates/share", views.certificate_share, name="certificate-share"),

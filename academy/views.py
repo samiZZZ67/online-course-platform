@@ -16,6 +16,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.files.storage import default_storage
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
@@ -1352,6 +1353,57 @@ def instructor_thumbnail(request):
     course.thumbnail = thumbnail
     course.save(update_fields=["thumbnail", "updated_at"])
     return json_response({"ok": True, "course": serialize_course(course)})
+
+
+@csrf_exempt
+def instructor_course_assets(request):
+    if response := guard_method(request, {"POST"}):
+        return response
+    ensure_seeded()
+    course_id = str(request.POST.get("courseId", "")).strip()
+    lesson_id = str(request.POST.get("lessonId", "")).strip()
+    if not course_id:
+        return error_response("courseId is required.", 400)
+    upload = request.FILES.get("file")
+    if not upload:
+        return error_response("file is required.", 400)
+    user, _email, _session = resolve_actor(request, data=request.POST.dict())
+    course = course_by_slug_or_404(course_id)
+    if access_error := require_course_owner_access(user, course):
+        return access_error
+
+    extension = Path(upload.name or "").suffix.lower()
+    safe_filename = build_token(10)
+    relative_path = default_storage.save(f"course-assets/{course.slug}/{safe_filename}{extension}", upload)
+    asset_url = default_storage.url(relative_path)
+
+    attached_lesson = None
+    if lesson_id:
+        attached_lesson = models.CourseLesson.objects.select_related("module", "module__course").filter(
+            lesson_key=lesson_id,
+            module__course=course,
+        ).first()
+        if attached_lesson:
+            attached_lesson.asset_url = asset_url
+            attached_lesson.save(update_fields=["asset_url", "updated_at"])
+
+    refreshed_course = course_by_slug_or_404(course_id) or course
+    return json_response(
+        {
+            "ok": True,
+            "asset": {
+                "name": upload.name,
+                "size": upload.size,
+                "contentType": getattr(upload, "content_type", "") or "",
+                "url": asset_url,
+                "path": relative_path,
+                "lessonId": attached_lesson.lesson_key if attached_lesson else None,
+                "attachedToLesson": bool(attached_lesson),
+            },
+            "course": serialize_course(refreshed_course),
+        },
+        status=201,
+    )
 
 
 @csrf_exempt
