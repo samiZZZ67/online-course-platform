@@ -10,6 +10,7 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("index.html", views.index, name="index-file"),
     path("frontend-auth.js", views.frontend_auth_script, name="frontend-auth-script"),
+    re_path(r"^media/course-assets/(?P<asset_path>.+)$", views.course_asset_media, name="course-asset-media"),
     path("register", views.public_register, name="register"),
     path("login", views.public_login, name="login"),
     path("refresh-token", views.public_refresh_token, name="refresh-token"),

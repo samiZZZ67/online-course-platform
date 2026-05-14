@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Iterable
@@ -18,7 +19,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 
@@ -192,6 +193,83 @@ def frontend_auth_script(request):
         return error_response("Method not allowed", 405)
     script = FRONTEND_AUTH_SCRIPT_PATH.read_text(encoding="utf-8")
     response = HttpResponse(script, content_type="application/javascript; charset=utf-8")
+    return add_cors_headers(response)
+
+
+def _iter_file_range(file_path: Path, start: int, length: int):
+    with file_path.open("rb") as handle:
+        handle.seek(start)
+        remaining = length
+        while remaining > 0:
+            chunk = handle.read(min(8192, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
+def _resolve_course_asset_path(asset_path: str) -> Path | None:
+    base_dir = (Path(settings.MEDIA_ROOT) / "course-assets").resolve()
+    candidate = (base_dir / asset_path).resolve()
+    try:
+        candidate.relative_to(base_dir)
+    except ValueError:
+        return None
+    if not candidate.is_file():
+        return None
+    return candidate
+
+
+def course_asset_media(request, asset_path: str):
+    if request.method not in {"GET", "HEAD"}:
+        return error_response("Method not allowed", 405)
+    file_path = _resolve_course_asset_path(asset_path)
+    if not file_path:
+        return error_response("Asset not found", 404)
+
+    file_size = file_path.stat().st_size
+    content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+    range_header = request.headers.get("Range", "").strip()
+
+    if range_header.startswith("bytes="):
+        requested_range = range_header.removeprefix("bytes=").split(",", 1)[0]
+        start_text, separator, end_text = requested_range.partition("-")
+        try:
+            if start_text:
+                start = int(start_text)
+                end = int(end_text) if end_text else file_size - 1
+            else:
+                suffix_length = int(end_text)
+                start = max(file_size - suffix_length, 0)
+                end = file_size - 1
+        except (TypeError, ValueError):
+            start = file_size
+            end = file_size - 1
+        if not separator or start < 0 or end < start or start >= file_size:
+            response = HttpResponse(status=416)
+            response["Content-Range"] = f"bytes */{file_size}"
+            return add_cors_headers(response)
+        end = min(end, file_size - 1)
+        content_length = end - start + 1
+        if request.method == "HEAD":
+            response = HttpResponse(status=206, content_type=content_type)
+        else:
+            response = StreamingHttpResponse(
+                _iter_file_range(file_path, start, content_length),
+                status=206,
+                content_type=content_type,
+            )
+        response["Content-Length"] = str(content_length)
+        response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    elif request.method == "HEAD":
+        response = HttpResponse(content_type=content_type)
+        response["Content-Length"] = str(file_size)
+    else:
+        response = FileResponse(file_path.open("rb"), content_type=content_type)
+        response["Content-Length"] = str(file_size)
+
+    response["Accept-Ranges"] = "bytes"
+    response["Content-Disposition"] = f'inline; filename="{file_path.name}"'
     return add_cors_headers(response)
 
 

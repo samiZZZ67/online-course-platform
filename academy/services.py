@@ -306,20 +306,28 @@ def serialize_course(course: models.Course) -> dict[str, Any]:
 
 
 def normalize_course_modules(modules: list[dict[str, Any]], course_slug: str) -> list[dict[str, Any]]:
+    course_slug = slugify(course_slug)
     normalized_modules: list[dict[str, Any]] = []
     for module_index, raw_module in enumerate(modules or [], start=1):
         if not isinstance(raw_module, dict):
             continue
+        raw_module_id = str(raw_module.get("id") or "").strip()
+        module_id = slugify(raw_module_id) if raw_module_id else f"{course_slug}-m{module_index}"
+        if course_slug and not module_id.startswith(f"{course_slug}-"):
+            module_id = slugify(f"{course_slug}-{module_id}")
         normalized_lessons: list[dict[str, Any]] = []
         for lesson_index, raw_lesson in enumerate(raw_module.get("lessons", []) or [], start=1):
             if not isinstance(raw_lesson, dict):
                 continue
-            lesson_id = str(raw_lesson.get("id") or raw_lesson.get("lessonId") or f"{course_slug}-m{module_index}-l{lesson_index}").strip()
+            raw_lesson_id = str(raw_lesson.get("id") or raw_lesson.get("lessonId") or "").strip()
+            lesson_id = slugify(raw_lesson_id) if raw_lesson_id else f"{course_slug}-m{module_index}-l{lesson_index}"
+            if course_slug and not lesson_id.startswith(f"{course_slug}-"):
+                lesson_id = slugify(f"{course_slug}-{lesson_id}")
             lesson_type = str(raw_lesson.get("type", models.CourseLesson.TYPE_VIDEO)).strip().lower() or models.CourseLesson.TYPE_VIDEO
             if lesson_type not in {choice for choice, _label in models.CourseLesson.TYPE_CHOICES}:
                 lesson_type = models.CourseLesson.TYPE_VIDEO
             normalized_lesson = {
-                "id": slugify(lesson_id),
+                "id": lesson_id,
                 "title": str(raw_lesson.get("title", f"Lesson {lesson_index}")).strip() or f"Lesson {lesson_index}",
                 "duration": str(raw_lesson.get("duration", "")).strip(),
                 "type": lesson_type,
@@ -332,7 +340,7 @@ def normalize_course_modules(modules: list[dict[str, Any]], course_slug: str) ->
             normalized_lessons.append(normalized_lesson)
         normalized_modules.append(
             {
-                "id": slugify(str(raw_module.get("id") or f"{course_slug}-m{module_index}").strip()),
+                "id": module_id,
                 "title": str(raw_module.get("title", f"Module {module_index}")).strip() or f"Module {module_index}",
                 "duration": str(raw_module.get("duration", "")).strip(),
                 "summary": str(raw_module.get("summary") or raw_module.get("description") or "").strip(),
@@ -1180,6 +1188,9 @@ def create_or_update_course_from_input(input_course: dict[str, Any], user=None) 
         slug_value = f"{base_slug}-{suffix}"
         suffix += 1
     normalized["id"] = slug_value
+    normalized["modules"] = normalize_course_modules(normalized.get("modules", []), slug_value)
+    if normalized["modules"]:
+        normalized["lessons"] = sum(len(module.get("lessons", [])) for module in normalized["modules"])
     created = course is None
     course = course or models.Course(slug=slug_value)
     apply_course_payload(course, normalized, is_custom=True, created_by=user)

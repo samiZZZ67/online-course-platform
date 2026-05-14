@@ -1066,6 +1066,65 @@ class SkillForgeApiTests(TestCase):
         self.assertEqual(course.course_modules.count(), 2)
         self.assertEqual(models.CourseLesson.objects.filter(module__course=course).count(), 3)
 
+    def test_instructor_can_create_multiple_shell_courses_without_lesson_key_collisions(self):
+        User = get_user_model()
+        instructor = User.objects.create_user(
+            email="multi-shell-author@example.com",
+            password="strongpass1",
+            first_name="Multi",
+            last_name="Author",
+            role="instructor",
+        )
+        self.client.force_login(instructor)
+
+        first_response = self.client.post(
+            "/api/instructor/courses",
+            data=json.dumps(
+                {
+                    "course": {
+                        "title": "Creator Systems Sprint",
+                        "overview": "A shell course created from the simple add-course form.",
+                        "instructor": "Multi Author",
+                        "cat": "ai",
+                        "lessons": 12,
+                        "hours": 6,
+                        "price": 1500,
+                    }
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(first_response.status_code, 201)
+        first_course = first_response.json()["course"]
+
+        second_response = self.client.post(
+            "/api/instructor/courses",
+            data=json.dumps(
+                {
+                    "course": {
+                        "title": "Creator Systems Sprint",
+                        "overview": "A second shell course with the same title should get its own slug and lessons.",
+                        "instructor": "Multi Author",
+                        "cat": "ai",
+                        "lessons": 16,
+                        "hours": 8,
+                        "price": 1800,
+                    }
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(second_response.status_code, 201)
+        second_course = second_response.json()["course"]
+
+        self.assertNotEqual(first_course["id"], second_course["id"])
+        self.assertTrue(first_course["modules"][0]["lessons"][0]["id"].startswith(first_course["id"]))
+        self.assertTrue(second_course["modules"][0]["lessons"][0]["id"].startswith(second_course["id"]))
+        self.assertEqual(
+            models.CourseLesson.objects.filter(module__course__slug__in=[first_course["id"], second_course["id"]]).count(),
+            first_course["lessons"] + second_course["lessons"],
+        )
+
     def test_instructor_can_upload_lesson_asset_for_player(self):
         User = get_user_model()
         instructor = User.objects.create_user(
@@ -1120,6 +1179,12 @@ class SkillForgeApiTests(TestCase):
 
                 lesson = models.CourseLesson.objects.get(lesson_key=lesson_id)
                 self.assertEqual(lesson.asset_url, uploaded_payload["asset"]["url"])
+
+                asset_response = self.client.get(uploaded_payload["asset"]["url"], HTTP_RANGE="bytes=0-3")
+                self.assertEqual(asset_response.status_code, 206)
+                self.assertEqual(asset_response.headers["Accept-Ranges"], "bytes")
+                self.assertEqual(asset_response.headers["Content-Range"], "bytes 0-3/18")
+                self.assertEqual(b"".join(asset_response.streaming_content), b"fake")
 
     def test_instructor_cannot_modify_another_instructors_course(self):
         User = get_user_model()

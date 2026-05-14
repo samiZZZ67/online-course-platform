@@ -1039,7 +1039,7 @@
         });
         if (submitButton) {
           submitButton.disabled = false;
-          submitButton.textContent = "Save Course";
+          submitButton.textContent = "Create Course";
         }
         if (!result.response.ok || !result.data.course) {
           safeToast("Course not created", result.data.message || "Unable to save this course right now.", "error");

@@ -2320,7 +2320,7 @@ const COURSE_DATA=[
 const COURSE_INDEX=Object.fromEntries(COURSE_DATA.map(course=>[course.id,course]));
 
 function registerCourse(courseInput,{persist=false}={}){
-  const nextCourse=courseInput.track?courseInput:enrichCourse(courseInput);
+  const nextCourse=enrichCourse(courseInput);
   const existingIndex=COURSE_DATA.findIndex(course=>course.id===nextCourse.id);
   if(existingIndex>=0){
     COURSE_DATA.splice(existingIndex,1,nextCourse);
@@ -2489,6 +2489,7 @@ function stripCourseForStorage(course){
   return {
     id:course.id,
     cat:course.cat,
+    categoryDetail:course.categoryDetail||null,
     mark:course.mark,
     title:course.title,
     instructor:course.instructor,
@@ -2510,31 +2511,76 @@ function stripCourseForStorage(course){
     projects:course.projects,
     gradient:course.gradient,
     overview:course.overview,
-    thumbnail:course.thumbnail
+    thumbnail:course.thumbnail,
+    track:course.track,
+    requirements:cloneData(course.requirements||[]),
+    learn:cloneData(course.learn||[]),
+    resources:cloneData(course.resources||[]),
+    qa:cloneData(course.qa||[]),
+    modules:cloneData(course.modules||[]),
+    moduleCount:course.moduleCount||0,
+    freeLessonCount:course.freeLessonCount||0,
+    tags:cloneData(course.tags||[]),
+    includes:cloneData(course.includes||[]),
+    isCustom:Boolean(course.isCustom),
+    createdById:course.createdById||null
   };
 }
 
 function enrichCourse(course){
-  const category=CATEGORY_LIBRARY[course.cat];
+  course=course||{};
+  const categoryKey=course.cat in CATEGORY_LIBRARY?course.cat:'ai';
+  const category=CATEGORY_LIBRARY[categoryKey];
+  const courseId=course.id||slugify(course.title||`course-${Date.now()}`);
+  const priceValue=Math.max(0,parseInt(String(course.priceValue??course.price??0).replace(/[^\d]/g,''),10)||0);
+  const hours=Math.max(1,parseInt(course.hours,10)||1);
+  const projects=Math.max(1,parseInt(course.projects,10)||Math.round(hours/3)||1);
+  const modulesSource=Array.isArray(course.modules)&&course.modules.length?course.modules:category.modules;
+  const modules=modulesSource.map((module,moduleIndex)=>({
+    ...module,
+    id:module.id||`${courseId}-m${moduleIndex+1}`,
+    lessons:(module.lessons||[]).map((lesson,lessonIndex)=>({
+      ...lesson,
+      id:lesson.id||lesson.lessonId||`${courseId}-m${moduleIndex+1}-l${lessonIndex+1}`
+    }))
+  }));
+  const lessonCount=modules.reduce((total,module)=>total+(module.lessons||[]).length,0);
+  const track=course.track||category.label;
+  const priceLabel=course.price||priceValue.toLocaleString('en-US');
+  const thumbnailSeed={...course,id:courseId,cat:categoryKey,track,price:priceLabel,priceValue};
   return {
     ...course,
-    track:category.label,
-    thumbnail:course.thumbnail||APP.state.thumbnailOverrides[course.id]||createCourseThumbnailData(course),
-    requirements:[...category.requirements],
-    learn:[...category.learn],
-    resources:[...category.resources],
-    qa:category.qa.map(item=>({...item})),
-    modules:category.modules.map((module,moduleIndex)=>({
-      ...module,
-      lessons:module.lessons.map((lesson,lessonIndex)=>({
-        id:`${course.id}-${moduleIndex}-${lessonIndex}`,
-        ...lesson
-      }))
-    })),
-    tags:[category.label,'Projects','Mentorship','Templates'].slice(0,4),
-    includes:[
-      `${course.hours} hours of guided lessons`,
-      `${course.projects} practical project builds`,
+    id:courseId,
+    cat:categoryKey,
+    mark:course.mark||getCategoryMark(categoryKey),
+    rating:typeof course.rating==='number'?course.rating:parseFloat(course.rating||4.8)||4.8,
+    reviews:Math.max(0,parseInt(course.reviews,10)||0),
+    reviewLabel:course.reviewLabel||((parseInt(course.reviews,10)||0)?String(course.reviews):'New'),
+    students:Math.max(0,parseInt(course.students,10)||0),
+    studentsLabel:course.studentsLabel||Math.max(0,parseInt(course.students,10)||0).toLocaleString('en-US'),
+    price:priceLabel,
+    priceValue,
+    orig:course.orig||Math.max(priceValue,Math.round(priceValue*1.6)).toLocaleString('en-US'),
+    badge:course.badge||'Draft',
+    badgeClass:course.badgeClass||category.badgeClass,
+    lessons:lessonCount||Math.max(1,parseInt(course.lessons,10)||1),
+    hours,
+    level:course.level||'Beginner',
+    projects,
+    gradient:course.gradient||getCategoryGradient(categoryKey),
+    track,
+    thumbnail:course.thumbnail||APP.state.thumbnailOverrides[courseId]||createCourseThumbnailData(thumbnailSeed),
+    requirements:Array.isArray(course.requirements)&&course.requirements.length?cloneData(course.requirements):[...category.requirements],
+    learn:Array.isArray(course.learn)&&course.learn.length?cloneData(course.learn):[...category.learn],
+    resources:Array.isArray(course.resources)&&course.resources.length?cloneData(course.resources):[...category.resources],
+    qa:Array.isArray(course.qa)&&course.qa.length?cloneData(course.qa):category.qa.map(item=>({...item})),
+    modules,
+    moduleCount:course.moduleCount||modules.length,
+    freeLessonCount:course.freeLessonCount||modules.reduce((total,module)=>total+(module.lessons||[]).filter(lesson=>lesson.free).length,0),
+    tags:Array.isArray(course.tags)&&course.tags.length?cloneData(course.tags):[track,'Projects','Mentorship','Templates'].slice(0,4),
+    includes:Array.isArray(course.includes)&&course.includes.length?cloneData(course.includes):[
+      `${hours} hours of guided lessons`,
+      `${projects} practical project builds`,
       'Downloadable templates and checklists',
       'Lifetime access across devices',
       'Certificate-ready completion path',
@@ -2565,8 +2611,11 @@ function ensureSelectedLesson(course){
   const lessons=getFlattenedLessons(course);
   const hasCurrent=lessons.some(lesson=>lesson.id===APP.state.selectedLessonId);
   if(hasCurrent) return;
-  const firstIncomplete=lessons.find(lesson=>!lesson.done&&lesson.type==='video')||lessons.find(lesson=>!lesson.done)||lessons[0];
-  APP.state.selectedLessonId=firstIncomplete?firstIncomplete.id:null;
+  const firstUploadedVideo=lessons.find(lesson=>isVideoAssetUrl(lesson.assetUrl));
+  const firstUploadedAsset=lessons.find(lesson=>String(lesson.assetUrl||'').trim());
+  const firstIncomplete=lessons.find(lesson=>!lesson.done&&lesson.type==='video')||lessons.find(lesson=>!lesson.done);
+  const initialLesson=firstUploadedVideo||firstUploadedAsset||firstIncomplete||lessons[0];
+  APP.state.selectedLessonId=initialLesson?initialLesson.id:null;
 }
 
 function getSelectedLesson(course){
@@ -2611,7 +2660,7 @@ function renderLessonMedia(course,lesson,lessonIndex,totalLessons){
     }
     if(isVideoAssetUrl(assetUrl)){
       return `
-        <video class="player-media-video" src="${escapeHtml(assetUrl)}" controls preload="metadata"></video>
+        <video class="player-media-video" src="${escapeHtml(assetUrl)}" controls preload="metadata" playsinline ${APP.state.isPlaying?'autoplay':''}></video>
       `;
     }
     return `
