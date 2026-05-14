@@ -15,8 +15,16 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.utils import timezone
 
+from . import admin as academy_admin
 from . import models
-from .services import AUTH_COOKIE_NAME, JWT_ALGORITHM, JWT_ISSUER, auth_version_for_user, seed_database
+from .services import (
+    AUTH_COOKIE_NAME,
+    JWT_ALGORITHM,
+    JWT_ISSUER,
+    auth_version_for_user,
+    refresh_course_structure_snapshot,
+    seed_database,
+)
 
 
 class SkillForgeApiTests(TestCase):
@@ -51,9 +59,24 @@ class SkillForgeApiTests(TestCase):
         self.assertTrue(hasattr(instructor, "instructor_profile"))
 
     def test_health_and_courses_endpoints_are_available(self):
+        admin_no_slash_response = self.client.get("/admin")
+        self.assertEqual(admin_no_slash_response.status_code, 302)
+        self.assertEqual(admin_no_slash_response.headers["Location"], "/admin/")
+
         admin_response = self.client.get("/admin/login/")
         self.assertEqual(admin_response.status_code, 200)
         self.assertIn("SkillForge Admin", admin_response.content.decode("utf-8"))
+
+        site_admin_no_slash_response = self.client.get("/site-admin")
+        self.assertEqual(site_admin_no_slash_response.status_code, 302)
+        self.assertEqual(site_admin_no_slash_response.headers["Location"], "/admin/")
+
+        site_admin_response = self.client.get("/site-admin/login/")
+        self.assertEqual(site_admin_response.status_code, 302)
+        self.assertEqual(site_admin_response.headers["Location"], "/admin/login/")
+        site_admin_follow_response = self.client.get("/site-admin/login/", follow=True)
+        self.assertEqual(site_admin_follow_response.status_code, 200)
+        self.assertIn("SkillForge Admin", site_admin_follow_response.content.decode("utf-8"))
 
         index_response = self.client.get("/")
         self.assertEqual(index_response.status_code, 200)
@@ -72,7 +95,11 @@ class SkillForgeApiTests(TestCase):
         self.assertEqual(courses_response.status_code, 200)
         courses = courses_response.json()
         self.assertTrue(courses["ok"])
-        self.assertGreaterEqual(courses["count"], 9)
+        self.assertEqual(courses["count"], 3)
+        self.assertEqual(
+            {course["id"] for course in courses["courses"]},
+            {"claude-ai-engineering", "smart-money-forex", "premiere-after-effects"},
+        )
 
         detail_response = self.client.get("/api/courses/claude-ai-engineering")
         self.assertEqual(detail_response.status_code, 200)
@@ -802,7 +829,11 @@ class SkillForgeApiTests(TestCase):
         self.assertEqual(categories_response.status_code, 200)
         categories_payload = categories_response.json()
         self.assertTrue(categories_payload["ok"])
-        self.assertGreaterEqual(categories_payload["count"], 6)
+        self.assertEqual(categories_payload["count"], 3)
+        self.assertEqual(
+            {category["slug"] for category in categories_payload["categories"]},
+            {"ai", "forex", "video"},
+        )
 
         ai_category = next(category for category in categories_payload["categories"] if category["slug"] == "ai")
         self.assertGreaterEqual(ai_category["courseCount"], 1)
@@ -814,6 +845,54 @@ class SkillForgeApiTests(TestCase):
         self.assertGreaterEqual(detail["moduleCount"], 1)
         self.assertGreaterEqual(detail["freeLessonCount"], 1)
         self.assertTrue(detail["modules"][0]["lessons"][0]["id"].startswith("claude-ai-engineering-"))
+
+    def test_admin_course_content_fields_feed_course_snapshot(self):
+        self.assertIn("summary", academy_admin.CourseLessonInline.fields)
+        self.assertIn("asset_url", academy_admin.CourseLessonInline.fields)
+        self.assertEqual(academy_admin.CourseLessonInline.extra, 1)
+        self.assertTrue(academy_admin.CourseModuleInline.show_change_link)
+
+        course = models.Course.objects.get(slug="claude-ai-engineering")
+        module = models.CourseModule.objects.create(
+            course=course,
+            title="Admin hour outline",
+            summary="What learners cover in this hour.",
+            duration_label="1h",
+            position=99,
+        )
+        lesson = models.CourseLesson.objects.create(
+            module=module,
+            title="Hour 1 content plan",
+            summary="Set the learning outcome, explain the work, and assign practice.",
+            duration_label="60m",
+            content_type=models.CourseLesson.TYPE_VIDEO,
+            position=1,
+        )
+
+        self.assertTrue(lesson.lesson_key.startswith("claude-ai-engineering-m99-l1-hour-1-content-plan"))
+
+        form = academy_admin.CourseLessonAdminForm(
+            data={
+                "module": module.pk,
+                "position": 2,
+                "lesson_key": "",
+                "title": "Hour 2 content plan",
+                "summary": "Review the work and define the next practice task.",
+                "duration_label": "45m",
+                "content_type": models.CourseLesson.TYPE_VIDEO,
+                "asset_url": "",
+                "is_published": "on",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_json())
+        form_lesson = form.save()
+        self.assertTrue(form_lesson.lesson_key.startswith("claude-ai-engineering-m99-l2-hour-2-content-plan"))
+
+        refresh_course_structure_snapshot(course)
+        course.refresh_from_db()
+        module_payload = next(item for item in course.modules if item["title"] == "Admin hour outline")
+        self.assertEqual(module_payload["summary"], "What learners cover in this hour.")
+        self.assertEqual(module_payload["lessons"][0]["summary"], "Set the learning outcome, explain the work, and assign practice.")
 
     def test_course_list_supports_category_and_search_filters(self):
         category_response = self.client.get("/api/courses?category=ai")

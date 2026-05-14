@@ -18,7 +18,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.cache import cache
 from django.core.mail import send_mail
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -483,6 +483,54 @@ def sync_course_structure(course: models.Course, payload: dict[str, Any]) -> Non
     course.save(update_fields=["modules", "lessons_count", "updated_at"])
 
 
+def refresh_course_structure_snapshot(course: models.Course) -> models.Course:
+    """Mirror admin-edited modules and lessons into the course JSON summary."""
+    if not course or not getattr(course, "pk", None):
+        return course
+
+    modules_payload: list[dict[str, Any]] = []
+    lessons_count = 0
+    module_queryset = (
+        models.CourseModule.objects.filter(course=course)
+        .prefetch_related("lessons")
+        .order_by("position", "pk")
+    )
+    for module in module_queryset:
+        lessons_payload: list[dict[str, Any]] = []
+        for lesson in module.lessons.all():
+            lesson_metadata = clone_json(lesson.metadata or {})
+            lesson_payload = {
+                "id": lesson.lesson_key,
+                "title": lesson.title,
+                "duration": lesson.duration_label,
+                "type": lesson.content_type,
+                "free": bool(lesson.is_free_preview),
+                "summary": lesson.summary,
+                "assetUrl": lesson.asset_url,
+                "metadata": lesson_metadata,
+            }
+            if lesson_metadata.get("done"):
+                lesson_payload["done"] = True
+            lessons_payload.append(lesson_payload)
+
+        lessons_count += len(lessons_payload)
+        modules_payload.append(
+            {
+                "id": f"{course.slug}-m{module.position}",
+                "title": module.title,
+                "duration": module.duration_label,
+                "summary": module.summary,
+                "position": module.position,
+                "lessons": lessons_payload,
+            }
+        )
+
+    course.modules = modules_payload
+    course.lessons_count = lessons_count
+    course.save(update_fields=["modules", "lessons_count", "updated_at"])
+    return course
+
+
 @transaction.atomic
 def seed_database(force: bool = False) -> None:
     User = get_user_model()
@@ -536,12 +584,16 @@ def seed_database(force: bool = False) -> None:
         demo_user.set_password("skillforge123")
         demo_user.save()
 
+    seed_course_ids = set()
     for raw_course in seed.get("courses", {}).get("base", []):
         payload = catalog.enrich_course(raw_course)
+        seed_course_ids.add(payload["id"])
         course, _created = models.Course.objects.get_or_create(slug=payload["id"])
         apply_course_payload(course, payload, is_custom=False)
         course.save()
         sync_course_structure(course, payload)
+    if force:
+        models.Course.objects.filter(is_custom=False).exclude(slug__in=seed_course_ids).delete()
 
     for raw_coupon in seed.get("coupons", []):
         models.Coupon.objects.update_or_create(
@@ -1120,7 +1172,12 @@ def sync_student_profile_metrics(user=None, email: str | None = None):
 
 
 def list_course_categories() -> list[models.CourseCategory]:
-    return list(models.CourseCategory.objects.filter(is_active=True).order_by("sort_order", "label"))
+    return list(
+        models.CourseCategory.objects.filter(is_active=True)
+        .annotate(course_count=Count("courses"))
+        .filter(course_count__gt=0)
+        .order_by("sort_order", "label")
+    )
 
 
 def lesson_by_key(lesson_key: str) -> models.CourseLesson | None:

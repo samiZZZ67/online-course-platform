@@ -1,7 +1,8 @@
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
-from django.urls import include, path
+from django.urls import include, path, re_path
+from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularRedocView, SpectacularSwaggerView
 
 from academy import api_docs
@@ -17,7 +18,10 @@ urlpatterns = [
     path("api/docs/openapi.yaml", api_docs.auth_openapi_yaml, name="auth-openapi-yaml"),
     path("api/docs/swagger/", SpectacularSwaggerView.as_view(url_name="auth-openapi-json"), name="auth-openapi-swagger"),
     path("api/docs/redoc/", SpectacularRedocView.as_view(url_name="auth-openapi-json"), name="auth-openapi-redoc"),
+    path("admin", RedirectView.as_view(url="/admin/", permanent=False), name="admin-no-slash"),
     path("admin/", admin.site.urls),
+    path("site-admin", RedirectView.as_view(url="/admin/", permanent=False), name="site-admin-no-slash"),
+    re_path(r"^site-admin/(?P<url_path>.*)$", RedirectView.as_view(url="/admin/%(url_path)s", permanent=False), name="site-admin"),
     path("", include("academy.urls")),
 ]
 

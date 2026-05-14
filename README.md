@@ -1,4 +1,4 @@
-# SkillForge Backend
+# HackersAcademy Backend
 
 This backend now runs on Python Django and mirrors the API contract already defined inside `index.html`, without changing that file.
 
@@ -50,7 +50,7 @@ Run that after `migrate` to load the starter catalog, coupons, and notifications
 python manage.py createsuperuser
 ```
 
-Then sign in at `http://localhost:3000/admin/`.
+Then sign in at `http://localhost:3000/admin/` or `http://localhost:3000/site-admin/`.
 
 ## API Docs
 

@@ -4,7 +4,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from .utils import DEFAULT_ACTOR_EMAIL
+from .utils import DEFAULT_ACTOR_EMAIL, slugify
 
 
 class TimeStampedModel(models.Model):
@@ -157,6 +157,26 @@ class CourseLesson(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.module.course.title}: {self.title}"
+
+    def save(self, *args, **kwargs):
+        if not str(self.lesson_key or "").strip():
+            module = getattr(self, "module", None)
+            course = getattr(module, "course", None) if module else None
+            course_slug = getattr(course, "slug", "course")
+            module_position = getattr(module, "position", 1)
+            max_length = self._meta.get_field("lesson_key").max_length
+            base = slugify(f"{course_slug}-m{module_position}-l{self.position}-{self.title}")[:max_length].strip("-")
+            base = base or slugify(f"{course_slug}-lesson")
+            candidate = base
+            suffix = 2
+            queryset = type(self).objects.exclude(pk=self.pk)
+            while queryset.filter(lesson_key=candidate).exists():
+                suffix_text = f"-{suffix}"
+                trimmed_base = base[: max_length - len(suffix_text)]
+                candidate = f"{trimmed_base}{suffix_text}"
+                suffix += 1
+            self.lesson_key = candidate
+        super().save(*args, **kwargs)
 
 
 class Coupon(TimeStampedModel):
