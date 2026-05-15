@@ -84,6 +84,7 @@ class Course(TimeStampedModel):
     learn = models.JSONField(default=list, blank=True)
     resources = models.JSONField(default=list, blank=True)
     qa = models.JSONField(default=list, blank=True)
+    includes = models.JSONField(default=list, blank=True)
     modules = models.JSONField(default=list, blank=True)
     is_custom = models.BooleanField(default=False)
     created_by = models.ForeignKey(

@@ -1,12 +1,46 @@
+from pathlib import Path
+
 from django import forms
 from django.contrib import admin
+from django.core.files.storage import default_storage
 from django.db import models as django_models
+from django.utils.html import format_html
 
 from . import models
 from .services import refresh_course_structure_snapshot
+from .utils import build_token
+
+
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".m4v", ".ogg"}
+DOCUMENT_EXTENSIONS = {".pdf"}
+
+
+def course_for_lesson(lesson: models.CourseLesson) -> models.Course | None:
+    module = getattr(lesson, "module", None)
+    return getattr(module, "course", None) if module else None
+
+
+def store_lesson_media_file(lesson: models.CourseLesson, upload) -> str:
+    course = course_for_lesson(lesson)
+    course_slug = getattr(course, "slug", "") or "prototype-course"
+    extension = Path(upload.name or "").suffix.lower()
+    relative_path = default_storage.save(f"course-assets/{course_slug}/{build_token('lesson')}{extension}", upload)
+    if extension in DOCUMENT_EXTENSIONS:
+        lesson.content_type = models.CourseLesson.TYPE_PDF
+    elif extension in VIDEO_EXTENSIONS:
+        lesson.content_type = models.CourseLesson.TYPE_VIDEO
+    return default_storage.url(relative_path)
 
 
 class CourseLessonAdminForm(forms.ModelForm):
+    asset_url = forms.CharField(
+        required=False,
+        help_text="Paste a hosted media URL or upload a prototype video/PDF below.",
+    )
+    media_file = forms.FileField(
+        required=False,
+        help_text="Upload a prototype lesson video or PDF. The player will use it immediately after save.",
+    )
     lesson_key = forms.SlugField(
         required=False,
         help_text="Leave blank to generate one from the course, module, and lesson title.",
@@ -20,6 +54,16 @@ class CourseLessonAdminForm(forms.ModelForm):
     class Meta:
         model = models.CourseLesson
         fields = "__all__"
+
+    def save(self, commit=True):
+        lesson = super().save(commit=False)
+        upload = self.cleaned_data.get("media_file")
+        if upload:
+            lesson.asset_url = store_lesson_media_file(lesson, upload)
+        if commit:
+            lesson.save()
+            self.save_m2m()
+        return lesson
 
 
 def refresh_admin_course_snapshot(course: models.Course | None) -> None:
@@ -39,6 +83,7 @@ class CourseLessonInline(admin.StackedInline):
         "content_type",
         "duration_label",
         "asset_url",
+        "media_file",
         "is_free_preview",
         "is_published",
     )
@@ -72,7 +117,7 @@ class CourseAdmin(admin.ModelAdmin):
     list_filter = ("category", "category_ref", "level", "is_custom")
     search_fields = ("title", "slug", "instructor_name", "overview")
     prepopulated_fields = {"slug": ("title",)}
-    readonly_fields = ("lessons_count",)
+    readonly_fields = ("lessons_count", "frontend_links")
     fieldsets = (
         (
             "Course identity",
@@ -80,6 +125,7 @@ class CourseAdmin(admin.ModelAdmin):
                 "fields": (
                     "title",
                     "slug",
+                    "frontend_links",
                     "category",
                     "category_ref",
                     "mark",
@@ -98,6 +144,7 @@ class CourseAdmin(admin.ModelAdmin):
                     "learn",
                     "resources",
                     "qa",
+                    "includes",
                 )
             },
         ),
@@ -136,6 +183,18 @@ class CourseAdmin(admin.ModelAdmin):
         django_models.TextField: {"widget": forms.Textarea(attrs={"rows": 4})},
     }
     inlines = (CourseModuleInline,)
+
+    @admin.display(description="Frontend links")
+    def frontend_links(self, obj):
+        if not obj or not getattr(obj, "slug", ""):
+            return "Save the course to enable links."
+        return format_html(
+            '<a href="/#detail/{}" target="_blank">Course page</a> &nbsp; '
+            '<a href="/#player/{}" target="_blank">Player</a> &nbsp; '
+            '<a href="/#instructor" target="_blank">Instructor page</a>',
+            obj.slug,
+            obj.slug,
+        )
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
@@ -200,6 +259,7 @@ class CourseLessonAdmin(admin.ModelAdmin):
                     "content_type",
                     "duration_label",
                     "asset_url",
+                    "media_file",
                     "metadata",
                 )
             },

@@ -30,6 +30,42 @@
   --radius-xl: 20px;
 }
 
+html[data-app-theme="dark-professional"]{
+  --bg:#0B0F14;
+  --surface:#121821;
+  --surface2:#1A2230;
+  --border:rgba(226,232,240,.08);
+  --border2:rgba(226,232,240,.16);
+  --gold:#38BDF8;
+  --gold2:#7DD3FC;
+  --gold-dim:rgba(56,189,248,.13);
+  --violet:#8B5CF6;
+  --violet-dim:rgba(139,92,246,.12);
+  --text:#F8FAFC;
+  --text2:#B6C2D2;
+  --text3:#738196;
+  --success:#34D399;
+  --danger:#FB7185;
+}
+
+html[data-app-theme="midnight-glass"]{
+  --bg:#060815;
+  --surface:rgba(13,18,35,.82);
+  --surface2:rgba(28,37,63,.78);
+  --border:rgba(191,219,254,.12);
+  --border2:rgba(191,219,254,.22);
+  --gold:#A7F3D0;
+  --gold2:#CCFBF1;
+  --gold-dim:rgba(167,243,208,.13);
+  --violet:#C4B5FD;
+  --violet-dim:rgba(196,181,253,.14);
+  --text:#F8FBFF;
+  --text2:#B8C7E0;
+  --text3:#7F8FAA;
+  --success:#5EEAD4;
+  --danger:#FDA4AF;
+}
+
 html{scroll-behavior:smooth}
 body{
   font-family:'DM Sans',system-ui,sans-serif;
@@ -39,6 +75,7 @@ body{
   line-height:1.6;
   overflow-x:hidden;
   min-height:100vh;
+  transition:background .2s ease,color .2s ease;
 }
 
 /* ─── SCROLLBAR ─── */
@@ -99,6 +136,13 @@ p{color:var(--text2);line-height:1.7}
 .nav-link{padding:8px 14px;border-radius:var(--radius-sm);color:var(--text2);text-decoration:none;font-size:.9rem;font-weight:500;transition:all .2s;cursor:pointer;border:none;background:none;font-family:inherit}
 .nav-link:hover,.nav-link.active{color:var(--text);background:var(--surface2)}
 .nav-actions{display:flex;align-items:center;gap:10px}
+.theme-select{background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:.82rem;padding:7px 28px 7px 10px;outline:none;cursor:pointer;transition:border-color .2s,color .2s,background .2s}
+.theme-select:hover,.theme-select:focus{border-color:var(--gold);color:var(--text)}
+html[data-app-theme="dark-professional"] .nav.scrolled{background:rgba(11,15,20,.94)}
+html[data-app-theme="midnight-glass"] .nav.scrolled{background:rgba(6,8,21,.78)}
+html[data-app-theme="midnight-glass"] .nav.scrolled,
+html[data-app-theme="midnight-glass"] .modal,
+html[data-app-theme="midnight-glass"] .toast{backdrop-filter:blur(18px);box-shadow:0 18px 48px rgba(0,0,0,.34)}
 
 /* ─── VIEW SYSTEM ─── */
 .view{display:none}
@@ -294,6 +338,9 @@ footer{padding:64px 0 32px;border-top:1px solid var(--border)}
 .sidebar-includes{list-style:none;font-size:.85rem;color:var(--text2)}
 .sidebar-includes li{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)}
 .sidebar-includes li:last-child{border-bottom:none}
+.sidebar-include-actions{display:grid;gap:8px;margin-bottom:16px}
+.sidebar-include-btn{width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:.84rem;text-align:left;padding:9px 11px;cursor:pointer}
+.sidebar-include-btn:hover{border-color:var(--gold);color:var(--text)}
 
 /* curriculum */
 .curriculum{margin-top:48px}
@@ -549,12 +596,46 @@ footer{padding:64px 0 32px;border-top:1px solid var(--border)}
 .studio-link:hover{text-decoration:underline}
 .studio-empty{background:var(--bg);border:1px dashed var(--border2);border-radius:var(--radius-xl);padding:24px;text-align:left;color:var(--text3)}
 .player-media-frame,.player-media-video{width:100%;height:100%;border:none;display:block;background:#000}
+.player-media-video{object-fit:contain}
+.pdf-viewer-container{background:var(--pdf-bg,#e9edf2)}
+.video-viewer-container{background:#000}
+.viewer-kind-label{position:absolute;top:12px;left:12px;z-index:6;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:rgba(8,12,18,.76);border:1px solid rgba(255,255,255,.14);color:#f8fafc;font-size:.74rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;backdrop-filter:blur(12px)}
+.pdf-control-panel{background:var(--surface);border-top:1px solid var(--border)}
+.pdf-control-label{display:inline-flex;align-items:center;gap:7px;color:var(--text);font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-right:4px}
+.pdf-tool-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pdf-zoom-status{min-width:42px;text-align:center;color:var(--text2);font-size:.8rem;font-variant-numeric:tabular-nums}
+.player-audio-shell,.assignment-media-shell{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px;background:radial-gradient(circle at top,var(--surface2),#050507 72%);text-align:center;position:relative}
+.player-audio-shell audio{width:min(620px,86%);accent-color:var(--gold)}
+.player-caption-overlay{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(780px,88%);background:rgba(0,0,0,.72);color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:8px 14px;font-size:.9rem;line-height:1.45;text-align:center;opacity:0;pointer-events:none;transition:opacity .18s;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+.player-caption-overlay.active{opacity:1}
+.player-btn.active,.player-btn[aria-pressed="true"]{background:var(--gold-dim);color:var(--gold)}
+.player-btn:disabled{opacity:.45;cursor:not-allowed}
+.player-progress.is-disabled{opacity:.55;cursor:default}
 .player-media-link{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:12px;padding:24px;text-align:left;color:var(--text2)}
+.pdf-reader-shell{width:100%;height:100%;position:relative;overflow:hidden;background:var(--pdf-bg,#e9edf2)}
+.pdf-reader-shell[data-pdf-theme="light"]{--pdf-bg:#eef1f5;--pdf-filter:none}
+.pdf-reader-shell[data-pdf-theme="sepia"]{--pdf-bg:#e8dcc6;--pdf-filter:sepia(.35) saturate(.92) brightness(.98)}
+.pdf-reader-shell[data-pdf-theme="dark"]{--pdf-bg:#101216;--pdf-filter:invert(.92) hue-rotate(180deg) contrast(.92) brightness(.9)}
+.pdf-reader-shell[data-pdf-theme="night-blue"]{--pdf-bg:#071427;--pdf-filter:invert(.9) hue-rotate(165deg) saturate(.9) brightness(.82)}
+.pdf-reader-shell[data-pdf-theme="warm-gray"]{--pdf-bg:#d8d2c8;--pdf-filter:sepia(.16) saturate(.82) brightness(.94) contrast(.98)}
+.pdf-reader-frame{width:100%;height:100%;border:none;display:block;background:var(--pdf-bg);filter:var(--pdf-filter);transform:scale(var(--pdf-zoom,1)) rotate(var(--pdf-rotate,0deg));transform-origin:center center;transition:filter .18s ease,background .18s ease,transform .18s ease}
+.pdf-hover-zone{position:absolute;top:0;left:0;right:0;height:72px;z-index:4}
+.pdf-reader-overlay{position:absolute;top:12px;left:50%;transform:translate(-50%,-12px);z-index:5;display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:999px;background:rgba(13,17,23,.88);border:1px solid rgba(255,255,255,.16);box-shadow:0 18px 44px rgba(0,0,0,.35);backdrop-filter:blur(16px);opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease}
+.pdf-hover-zone:hover~.pdf-reader-overlay,.pdf-reader-shell.overlay-visible .pdf-reader-overlay,.pdf-reader-overlay:hover,.pdf-reader-overlay:focus-within{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
+.pdf-overlay-btn,.pdf-theme-select{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#f8fafc;border-radius:999px;font-family:'DM Sans',sans-serif;font-size:.78rem;font-weight:600;padding:7px 11px;cursor:pointer;outline:none}
+.pdf-overlay-btn:hover,.pdf-theme-select:hover,.pdf-theme-select:focus{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.26)}
+.pdf-exit-only{display:none}
+.pdf-reader-shell.is-fullscreen .pdf-enter-only{display:none}
+.pdf-reader-shell.is-fullscreen .pdf-exit-only{display:inline-flex}
+.pdf-reader-shell:fullscreen{width:100vw;height:100vh;background:var(--pdf-bg)}
+.pdf-reader-shell.pdf-fallback-fullscreen{position:fixed;inset:0;z-index:6000;width:100vw;height:100vh}
 @media(max-width:600px){
   .search-bar{padding:12px;gap:10px}
   .search-bar button{width:100%;justify-content:center}
   .toast-stack{left:16px;right:16px;bottom:16px;max-width:none}
   .player-tabs{overflow:auto}
+  .theme-select{max-width:132px}
+  .pdf-reader-overlay{max-width:calc(100% - 24px);border-radius:18px;flex-wrap:wrap;justify-content:center}
 }
 </style>
 </head>
@@ -575,6 +656,11 @@ footer{padding:64px 0 32px;border-top:1px solid var(--border)}
       <button class="nav-link" onclick="showView('player')">Player</button>
     </div>
     <div class="nav-actions">
+      <select id="appThemeSelect" class="theme-select" aria-label="Application theme" onchange="setAppTheme(this.value)">
+        <option value="classic">Classic</option>
+        <option value="dark-professional">Dark Professional</option>
+        <option value="midnight-glass">Midnight Glass</option>
+      </select>
       <button class="btn btn-ghost btn-sm" onclick="openModal('login')">Sign In</button>
       <button class="btn btn-primary btn-sm" onclick="openModal('signup')">Get Started →</button>
     </div>
@@ -925,6 +1011,9 @@ footer{padding:64px 0 32px;border-top:1px solid var(--border)}
         </div>
       </div>
     </div>
+    <div style="display:flex;justify-content:center;margin-top:24px">
+      <button class="btn btn-primary" type="button" onclick="showView('instructor')">Open Instructor Page →</button>
+    </div>
   </div>
 </section>
 
@@ -1200,17 +1289,6 @@ footer{padding:64px 0 32px;border-top:1px solid var(--border)}
               <div class="sidebar-orig">4,999 ETB · 50% off · 2 days left</div>
               <button class="sidebar-btn" onclick="showView('player')">Enroll Now →</button>
               <button class="sidebar-btn-ghost">Add to Wishlist ♡</button>
-              <div style="text-align:center;font-size:.78rem;color:var(--text3);margin-bottom:16px">30-Day Money-Back Guarantee</div>
-              <div style="font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:10px;font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:.05em">This course includes:</div>
-              <ul class="sidebar-includes">
-                <li>🎥 12 hours on-demand video</li>
-                <li>📁 15 downloadable resources</li>
-                <li>💻 6 coding projects</li>
-                <li>♾️ Full lifetime access</li>
-                <li>📱 Access on mobile & TV</li>
-                <li>🏆 Certificate of completion</li>
-                <li>🤖 AI assistant support</li>
-              </ul>
               <div style="display:flex;gap:8px;margin-top:16px">
                 <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center">Share</button>
                 <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center">Gift</button>
@@ -2013,7 +2091,16 @@ const APP=window.SkillForgeApp={
     playerTab:'overview',
     playerProgress:34,
     isPlaying:false,
+    isMuted:false,
+    captionsEnabled:false,
     playbackSpeed:'1x',
+    pdfZoom:1,
+    pdfRotation:0,
+    appTheme:loadStorage('skillforge-app-theme','classic'),
+    pdfTheme:loadStorage('skillforge-pdf-theme','light'),
+    mediaPositions:loadStorage('skillforge-media-positions',{}),
+    mediaDurations:{},
+    assignmentDrafts:loadStorage('skillforge-assignment-drafts',{}),
     manualCategory:'all',
     courseFilters:{query:'',category:'all',level:'all',price:'all',sort:'bestselling'},
     instructorComposerOpen:false,
@@ -2061,6 +2148,52 @@ const APP=window.SkillForgeApp={
 };
 window.SkillForgeApp.getQueuedActions=()=>[...APP.actionQueue];
 window.SkillForgeApp.clearQueuedActions=()=>{APP.actionQueue.length=0;};
+
+const APP_THEMES={
+  classic:'Classic',
+  'dark-professional':'Dark Professional',
+  'midnight-glass':'Midnight Glass'
+};
+const PDF_READER_THEMES={
+  light:'Light',
+  sepia:'Sepia',
+  dark:'Dark',
+  'night-blue':'Night Blue',
+  'warm-gray':'Warm Gray'
+};
+let playerFallbackTimer=null;
+let pdfOverlayTimer=null;
+
+function applyAppTheme(theme){
+  const nextTheme=APP_THEMES[theme]?theme:'classic';
+  APP.state.appTheme=nextTheme;
+  document.documentElement.dataset.appTheme=nextTheme;
+  const select=document.getElementById('appThemeSelect');
+  if(select) select.value=nextTheme;
+}
+
+function setAppTheme(theme){
+  applyAppTheme(theme);
+  saveStorage('skillforge-app-theme',APP.state.appTheme);
+}
+
+function setPdfTheme(theme){
+  const nextTheme=PDF_READER_THEMES[theme]?theme:'light';
+  APP.state.pdfTheme=nextTheme;
+  saveStorage('skillforge-pdf-theme',nextTheme);
+  document.querySelectorAll('.pdf-reader-shell').forEach(shell=>{
+    shell.dataset.pdfTheme=nextTheme;
+  });
+  document.querySelectorAll('[data-pdf-theme-select]').forEach(select=>{
+    select.value=nextTheme;
+  });
+}
+
+function renderPdfThemeOptions(){
+  return Object.entries(PDF_READER_THEMES).map(([value,label])=>
+    `<option value="${value}" ${APP.state.pdfTheme===value?'selected':''}>${label}</option>`
+  ).join('');
+}
 
 const CATEGORY_LIBRARY={
   ai:{
@@ -2361,6 +2494,48 @@ function formatClock(seconds){
   return `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
 }
 
+function parseDurationSeconds(value){
+  if(!value) return 0;
+  const text=String(value).toLowerCase().trim();
+  if(text.includes('pdf')) return 0;
+  if(text.includes(':')){
+    const parts=text.split(':').map(part=>parseInt(part,10));
+    if(parts.length===3&&parts.every(part=>!Number.isNaN(part))){
+      return (parts[0]*3600)+(parts[1]*60)+parts[2];
+    }
+    if(parts.length===2&&parts.every(part=>!Number.isNaN(part))){
+      return (parts[0]*60)+parts[1];
+    }
+  }
+  const hourMatch=text.match(/(\d+)\s*h/);
+  const minuteMatch=text.match(/(\d+)\s*m/);
+  const secondMatch=text.match(/(\d+)\s*s/);
+  const hours=hourMatch?parseInt(hourMatch[1],10):0;
+  const minutes=minuteMatch?parseInt(minuteMatch[1],10):0;
+  const seconds=secondMatch?parseInt(secondMatch[1],10):0;
+  if(hours||minutes||seconds) return (hours*3600)+(minutes*60)+seconds;
+  const numeric=parseInt(text,10);
+  return Number.isNaN(numeric)?0:numeric*60;
+}
+
+function formatMediaClock(seconds){
+  const safeSeconds=Math.max(0,Math.floor(Number(seconds)||0));
+  const hours=Math.floor(safeSeconds/3600);
+  const mins=Math.floor((safeSeconds%3600)/60);
+  const secs=safeSeconds%60;
+  if(hours){
+    return `${hours}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+  }
+  return `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+}
+
+function formatMediaStatus(current,duration){
+  const safeDuration=Math.max(0,Number(duration)||0);
+  const safeCurrent=Math.min(Math.max(0,Number(current)||0),safeDuration||Number(current)||0);
+  const remaining=safeDuration?Math.max(0,safeDuration-safeCurrent):0;
+  return `${formatMediaClock(safeCurrent)} / ${safeDuration?formatMediaClock(safeDuration):'--:--'} · -${safeDuration?formatMediaClock(remaining):'--:--'}`;
+}
+
 function getCategoryGradient(category){
   return {
     ai:'linear-gradient(135deg,#1a0a2e,#2d1b69)',
@@ -2523,14 +2698,7 @@ function enrichCourse(course){
     moduleCount:course.moduleCount||modules.length,
     freeLessonCount:course.freeLessonCount||modules.reduce((total,module)=>total+(module.lessons||[]).filter(lesson=>lesson.free).length,0),
     tags:Array.isArray(course.tags)&&course.tags.length?cloneData(course.tags):[track,'Projects','Mentorship','Templates'].slice(0,4),
-    includes:Array.isArray(course.includes)&&course.includes.length?cloneData(course.includes):[
-      `${hours} hours of guided lessons`,
-      `${projects} practical project builds`,
-      'Downloadable templates and checklists',
-      'Lifetime access across devices',
-      'Certificate-ready completion path',
-      'AI tutor support during study'
-    ]
+    includes:Array.isArray(course.includes)?cloneData(course.includes).map(item=>String(item||'').trim()).filter(Boolean):[]
   };
 }
 
@@ -2575,6 +2743,55 @@ function isVideoAssetUrl(url){
 
 function isPdfAssetUrl(url){
   return /\.pdf(\?|#|$)/i.test(String(url||''));
+}
+
+function isAudioAssetUrl(url){
+  return /\.(mp3|wav|m4a|aac|flac|oga|opus)(\?|#|$)/i.test(String(url||''));
+}
+
+function getLessonMediaKind(lesson){
+  const assetUrl=String(lesson?.assetUrl||'').trim();
+  if((lesson?.type||'').toLowerCase()==='pdf'||isPdfAssetUrl(assetUrl)) return 'pdf';
+  if((lesson?.type||'').toLowerCase()==='assignment') return 'assignment';
+  if((lesson?.type||'').toLowerCase()==='audio'||isAudioAssetUrl(assetUrl)) return 'audio';
+  if((lesson?.type||'').toLowerCase()==='video'||isVideoAssetUrl(assetUrl)) return 'video';
+  if((lesson?.type||'').toLowerCase()==='quiz') return 'assignment';
+  return assetUrl?'asset':'empty';
+}
+
+function getMediaPositionKey(courseId,lessonId){
+  return `${courseId}:${lessonId}`;
+}
+
+function getLessonDurationSeconds(course,lesson){
+  const key=getMediaPositionKey(course.id,lesson.id);
+  return APP.state.mediaDurations[key]||parseDurationSeconds(lesson.duration);
+}
+
+function getLessonCurrentSeconds(course,lesson){
+  const key=getMediaPositionKey(course.id,lesson.id);
+  return Math.max(0,Number(APP.state.mediaPositions[key]||0)||0);
+}
+
+function setLessonPlaybackPosition(course,lesson,current,duration){
+  const key=getMediaPositionKey(course.id,lesson.id);
+  const safeDuration=Math.max(0,Number(duration)||0);
+  const safeCurrent=Math.max(0,Number(current)||0);
+  APP.state.mediaPositions[key]=safeDuration?Math.min(safeCurrent,safeDuration):safeCurrent;
+  if(safeDuration) APP.state.mediaDurations[key]=safeDuration;
+  APP.state.playerProgress=safeDuration?Math.round((APP.state.mediaPositions[key]/safeDuration)*100):0;
+  saveStorage('skillforge-media-positions',APP.state.mediaPositions);
+}
+
+function getCaptionSource(lesson){
+  const metadata=lesson?.metadata||{};
+  return String(lesson?.captionsUrl||lesson?.captionUrl||lesson?.subtitlesUrl||metadata.captionsUrl||metadata.captionUrl||metadata.subtitlesUrl||'').trim();
+}
+
+function getFallbackCaptionText(course,lesson){
+  const summary=String(lesson.summary||'').trim();
+  if(summary) return summary;
+  return `${lesson.title}. ${course.learn?.[0]||course.overview}`;
 }
 
 function getEmbeddableAssetUrl(url){
@@ -2627,6 +2844,105 @@ function renderLessonMedia(course,lesson,lessonIndex,totalLessons){
   `;
 }
 
+function createLessonPdfDataUrl(course,lesson,lessonIndex,totalLessons){
+  const title=escapeSvg(lesson.title);
+  const summary=escapeSvg(lesson.summary||course.overview||'Downloadable reading material for this lesson.');
+  const summaryLines=summary.match(/.{1,48}(\s|$)/g)?.slice(0,6).map((line,index)=>`<tspan x="118" dy="${index===0?0:34}">${line.trim()}</tspan>`).join('')||summary;
+  const svg=`
+    <svg xmlns="http://www.w3.org/2000/svg" width="900" height="1200" viewBox="0 0 900 1200">
+      <rect width="900" height="1200" fill="#ffffff"/>
+      <rect x="72" y="72" width="756" height="1056" rx="18" fill="#f8fafc" stroke="#d8dee9"/>
+      <text x="118" y="150" fill="#0f172a" font-family="Arial, sans-serif" font-size="28" font-weight="700">${escapeSvg(course.title)}</text>
+      <text x="118" y="205" fill="#64748b" font-family="Arial, sans-serif" font-size="18">${escapeSvg(lesson.moduleTitle||'Lesson material')}</text>
+      <text x="118" y="304" fill="#111827" font-family="Arial, sans-serif" font-size="46" font-weight="700">${title}</text>
+      <text x="118" y="392" fill="#334155" font-family="Arial, sans-serif" font-size="24">${summaryLines}</text>
+      <rect x="118" y="930" width="240" height="50" rx="25" fill="#0f172a"/>
+      <text x="144" y="963" fill="#ffffff" font-family="Arial, sans-serif" font-size="18" font-weight="700">Lesson ${lessonIndex+1} of ${totalLessons}</text>
+      <text x="118" y="1045" fill="#94a3b8" font-family="Arial, sans-serif" font-size="16">PDF preview generated from lesson metadata.</text>
+    </svg>
+  `.trim();
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function renderLessonMedia(course,lesson,lessonIndex,totalLessons){
+  const assetUrl=String(lesson.assetUrl||'').trim();
+  const mediaKind=getLessonMediaKind(lesson);
+  const embeddableUrl=getEmbeddableAssetUrl(assetUrl);
+  const captionSource=getCaptionSource(lesson);
+  const captionTrack=captionSource?`<track kind="subtitles" srclang="en" label="English" src="${escapeHtml(captionSource)}">`:'';
+  const captionOverlay=`<div id="playerCaptionOverlay" class="player-caption-overlay ${APP.state.captionsEnabled?'active':''}">${escapeHtml(getFallbackCaptionText(course,lesson))}</div>`;
+  if(mediaKind==='pdf'){
+    const pdfUrl=assetUrl||createLessonPdfDataUrl(course,lesson,lessonIndex,totalLessons);
+    const source=pdfUrl.startsWith('data:')?pdfUrl:`${pdfUrl}#toolbar=0&navpanes=0&view=FitH`;
+    return `
+      <div id="pdfReaderShell" class="pdf-reader-shell" data-pdf-theme="${escapeHtml(APP.state.pdfTheme)}" onmousemove="revealPdfOverlay()" onmouseenter="revealPdfOverlay()">
+        <div class="viewer-kind-label">PDF Viewer</div>
+        <div class="pdf-hover-zone" onmousemove="revealPdfOverlay()" onmouseenter="revealPdfOverlay()"></div>
+        <div class="pdf-reader-overlay" id="pdfReaderOverlay">
+          <select class="pdf-theme-select" data-pdf-theme-select aria-label="PDF reader theme" onchange="setPdfTheme(this.value)">${renderPdfThemeOptions()}</select>
+          <button class="pdf-overlay-btn pdf-enter-only" type="button" onclick="enterPdfFullScreen()">Full Screen</button>
+          <button class="pdf-overlay-btn pdf-exit-only" type="button" onclick="exitPdfFullScreen()">Exit Full Screen</button>
+        </div>
+        <iframe class="pdf-reader-frame" src="${escapeHtml(source)}" title="${escapeHtml(lesson.title)} PDF"></iframe>
+      </div>
+    `;
+  }
+  if(mediaKind==='assignment'){
+    return `
+      <div class="assignment-media-shell">
+        <div style="font-size:3rem">${lesson.type==='quiz'?'QZ':'AS'}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;color:var(--text)">${escapeHtml(lesson.title)}</div>
+        <div style="font-size:.85rem;color:var(--text3)">Module ${lesson.moduleIndex+1} · Lesson ${lessonIndex+1} of ${totalLessons}</div>
+        <button class="btn btn-primary btn-sm" type="button" onclick="setPlayerTab('assignments')">Open Assignment</button>
+      </div>
+    `;
+  }
+  if(assetUrl){
+    if(mediaKind==='audio'){
+      return `
+        <div class="player-audio-shell">
+          <div style="font-size:3rem">${course.mark}</div>
+          <div style="font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;color:var(--text)">${escapeHtml(lesson.title)}</div>
+          <div style="font-size:.85rem;color:var(--text3)">Audio lesson · ${escapeHtml(lesson.duration)}</div>
+          <audio id="lessonMedia" preload="metadata" src="${escapeHtml(assetUrl)}" ${APP.state.isMuted?'muted':''}>${captionTrack}</audio>
+          ${captionOverlay}
+        </div>
+      `;
+    }
+    if(embeddableUrl!==assetUrl&&(assetUrl.includes('youtube.com')||assetUrl.includes('youtu.be')||assetUrl.includes('vimeo.com'))){
+      return `
+        <div class="viewer-kind-label">Video Viewer</div>
+        <iframe class="player-media-frame" src="${escapeHtml(embeddableUrl)}" title="${escapeHtml(lesson.title)} video" allowfullscreen></iframe>
+      `;
+    }
+    if(mediaKind==='video'){
+      return `
+        <div class="viewer-kind-label">Video Viewer</div>
+        <video id="lessonMedia" class="player-media-video" src="${escapeHtml(assetUrl)}" preload="metadata" playsinline ${APP.state.isMuted?'muted':''}>${captionTrack}</video>
+        ${captionOverlay}
+      `;
+    }
+    return `
+      <div class="player-media-link">
+        <div style="font-size:3rem">${course.mark}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.05rem;font-weight:700;color:var(--text)">${escapeHtml(lesson.title)}</div>
+        <div style="font-size:.85rem;color:var(--text3)">Module ${lesson.moduleIndex+1} · Lesson ${lessonIndex+1} of ${totalLessons}</div>
+        <a class="btn btn-primary btn-sm" href="${escapeHtml(assetUrl)}" target="_blank" rel="noopener noreferrer">Open Lesson Asset</a>
+      </div>
+    `;
+  }
+  return `
+    <div class="player-vid-placeholder">
+      <div class="viewer-kind-label">Video Viewer</div>
+      <div style="font-size:4rem">${course.mark}</div>
+      <div style="font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;color:var(--text)">${escapeHtml(lesson.title)}</div>
+      <div style="font-size:.85rem;color:var(--text3)">Module ${lesson.moduleIndex+1} · Lesson ${lessonIndex+1} of ${totalLessons} · ${escapeHtml(lesson.duration)}</div>
+      <div class="play-btn" style="width:72px;height:72px" onclick="togglePlayback()"><div class="play-icon" style="border-width:13px 0 13px 22px"></div></div>
+      ${captionOverlay}
+    </div>
+  `;
+}
+
 function getPlayerThread(course){
   if(!APP.state.playerChats[course.id]){
     APP.state.playerChats[course.id]=[
@@ -2670,8 +2986,15 @@ function setScopedActive(element){
 }
 
 function syncHash(){
-  const routeViews=new Set(['detail','player']);
-  const hash=routeViews.has(APP.state.view)?`#${APP.state.view}/${APP.state.selectedCourseId}`:`#${APP.state.view}`;
+  let hash=`#${APP.state.view}`;
+  if(APP.state.view==='detail'){
+    hash=`#detail/${APP.state.selectedCourseId}`;
+  }
+  if(APP.state.view==='player'){
+    const course=getSelectedCourse();
+    const lesson=getSelectedLesson(course);
+    hash=`#player/${APP.state.selectedCourseId}/${lesson?.id||''}/${APP.state.playerTab||'overview'}`;
+  }
   if(location.hash!==hash){
     history.replaceState(null,'',hash);
   }
@@ -2707,7 +3030,10 @@ function openCourse(courseId){
 function openPlayerForCourse(courseId,lessonId){
   APP.state.selectedCourseId=courseId;
   APP.state.selectedLessonId=lessonId||null;
-  APP.state.playerProgress=lessonId?12:APP.state.playerProgress;
+  const course=getSelectedCourse();
+  const lesson=getSelectedLesson(course);
+  APP.state.playerProgress=getMediaProgressPercent(course,lesson);
+  APP.state.playerTab=lessonId?(getLessonMediaKind(lesson)==='assignment'?'assignments':'overview'):(APP.state.playerTab||'overview');
   renderPlayer();
   showView('player');
 }
@@ -3051,11 +3377,12 @@ function renderCourseDetail(){
                 <div class="sidebar-orig">${course.orig} original price</div>
                 <button class="sidebar-btn" type="button" onclick="startEnrollment('${course.id}')">Start Learning -></button>
                 <button class="sidebar-btn-ghost" type="button" onclick="toggleWishlist('${course.id}')">${APP.state.wishlist.includes(course.id)?'Saved to Wishlist':'Add to Wishlist'}</button>
-                <div style="text-align:center;font-size:.78rem;color:var(--text3);margin-bottom:16px">30-day refund window. Backend-ready checkout hooks included.</div>
-                <div style="font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:10px;font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:.05em">This course includes:</div>
-                <ul class="sidebar-includes">
-                  ${course.includes.map(item=>`<li>${escapeHtml(item)}</li>`).join('')}
-                </ul>
+                ${course.includes.length?`
+                  <div style="font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:10px;font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:.05em">This course includes:</div>
+                  <div class="sidebar-include-actions">
+                    ${course.includes.map(item=>`<button class="sidebar-include-btn" type="button">${escapeHtml(item)}</button>`).join('')}
+                  </div>
+                `:''}
                 <div style="display:flex;gap:8px;margin-top:16px">
                   <button class="btn btn-ghost btn-sm" type="button" style="flex:1;justify-content:center" onclick="shareCourse('${course.id}')">Share</button>
                   <button class="btn btn-ghost btn-sm" type="button" style="flex:1;justify-content:center" onclick="giftCourse('${course.id}')">Gift</button>
@@ -3209,14 +3536,14 @@ function renderPlayer(){
               <button class="player-btn" type="button" onclick="toggleMuteHint()">Audio</button>
               <span class="player-time">${formatPlayerTime(lesson.duration,APP.state.playerProgress)}</span>
               <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-                <button class="player-btn" type="button" onclick="showToast('Captions toggle ready','Connect this control to your transcript and caption service when the backend is available.','success')">CC</button>
+                <button class="player-btn" type="button" onclick="toggleCaptions()">CC</button>
                 <select class="player-speed" onchange="setPlaybackSpeed(this.value)">
                   <option ${APP.state.playbackSpeed==='1x'?'selected':''}>1x</option>
                   <option ${APP.state.playbackSpeed==='1.25x'?'selected':''}>1.25x</option>
                   <option ${APP.state.playbackSpeed==='1.5x'?'selected':''}>1.5x</option>
                   <option ${APP.state.playbackSpeed==='2x'?'selected':''}>2x</option>
                 </select>
-                <button class="player-btn" type="button" onclick="showToast('Full screen control ready','The button is in place for your real player integration.','success')">Full</button>
+                <button class="player-btn" type="button" onclick="togglePlayerFullScreen()">Full</button>
               </div>
             </div>
           </div>
@@ -3376,7 +3703,10 @@ function setPlaybackSpeed(value){
 }
 
 function toggleMuteHint(){
-  showToast('Audio control ready','Connect this button to your real media player volume state when you wire the backend and playback engine.','success');
+  APP.state.isMuted=!APP.state.isMuted;
+  const media=getActiveMediaElement();
+  if(media) media.muted=APP.state.isMuted;
+  syncMediaControls(media);
 }
 
 function downloadResource(courseId,resource){
@@ -3392,6 +3722,583 @@ function savePlayerNotes(){
   saveStorage('skillforge-notes',APP.state.notes);
   APP.request('notes.save',{courseId:course.id,notes:textarea.value},APP.config.endpoints.notes);
   showToast('Notes saved','Your notes are stored in frontend state and emitted as a backend-ready payload.','success');
+}
+
+function renderPdfControlPanel(){
+  return `
+    <div class="player-controls pdf-control-panel" aria-label="PDF viewer controls">
+      <div class="player-controls-row">
+        <span class="pdf-control-label">PDF Viewer</span>
+        <div class="pdf-tool-group" role="group" aria-label="PDF lesson navigation">
+          <button class="player-btn" type="button" onclick="changeLesson(-1)">Prev Lesson</button>
+          <button class="player-btn" type="button" onclick="changeLesson(1)">Next Lesson</button>
+        </div>
+        <div class="pdf-tool-group" role="group" aria-label="Document actions">
+          <button class="player-btn" type="button" onclick="openCurrentPdf()">Open</button>
+          <button class="player-btn" type="button" onclick="downloadCurrentPdf()">Download</button>
+          <button class="player-btn" type="button" onclick="printCurrentPdf()">Print</button>
+        </div>
+        <div style="margin-left:auto" class="pdf-tool-group" role="group" aria-label="PDF view controls">
+          <button class="player-btn" type="button" onclick="adjustPdfZoom(-0.1)" aria-label="Zoom out">-</button>
+          <span id="pdfZoomStatus" class="pdf-zoom-status">${Math.round((APP.state.pdfZoom||1)*100)}%</span>
+          <button class="player-btn" type="button" onclick="adjustPdfZoom(0.1)" aria-label="Zoom in">+</button>
+          <button class="player-btn" type="button" onclick="rotatePdfView()" aria-label="Rotate PDF">Rotate</button>
+          <button class="player-btn" type="button" onclick="resetPdfView()" aria-label="Reset PDF view">Reset</button>
+          <button class="player-btn" type="button" onclick="togglePdfFullScreen()">Full</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderVideoControlPanel(isTimedMedia,progress,current,duration,mediaKind){
+  return `
+    <div class="player-controls video-control-panel" aria-label="Video and audio controls">
+      <div class="player-progress ${isTimedMedia?'':'is-disabled'}" ${isTimedMedia?'onclick="seekPlayer(event)"':''} aria-label="Playback progress">
+        <div id="playerProgressFill" class="player-progress-fill" style="width:${progress}%"><div class="player-progress-thumb"></div></div>
+      </div>
+      <div class="player-controls-row">
+        <button class="player-btn" type="button" onclick="changeLesson(-1)" aria-label="Previous lesson">Prev</button>
+        <button id="playerPlayButton" class="player-btn" type="button" style="background:var(--gold);color:#08080F;border-radius:50%;width:58px;height:36px;font-size:.82rem" onclick="togglePlayback()" ${isTimedMedia?'':'disabled'}>${APP.state.isPlaying?'Pause':'Play'}</button>
+        <button class="player-btn" type="button" onclick="changeLesson(1)" aria-label="Next lesson">Next</button>
+        <button id="playerAudioButton" class="player-btn ${APP.state.isMuted?'active':''}" type="button" onclick="toggleMuteHint()" ${isTimedMedia?'':'disabled'} aria-pressed="${APP.state.isMuted?'true':'false'}">${APP.state.isMuted?'Muted':'Audio'}</button>
+        <span id="playerTime" class="player-time">${formatMediaStatus(current,duration)}</span>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <button id="playerCcButton" class="player-btn ${APP.state.captionsEnabled?'active':''}" type="button" onclick="toggleCaptions()" ${mediaKind==='assignment'?'disabled':''} aria-pressed="${APP.state.captionsEnabled?'true':'false'}">CC</button>
+          <select class="player-speed" onchange="setPlaybackSpeed(this.value)" ${isTimedMedia?'':'disabled'}>
+            <option ${APP.state.playbackSpeed==='1x'?'selected':''}>1x</option>
+            <option ${APP.state.playbackSpeed==='1.25x'?'selected':''}>1.25x</option>
+            <option ${APP.state.playbackSpeed==='1.5x'?'selected':''}>1.5x</option>
+            <option ${APP.state.playbackSpeed==='2x'?'selected':''}>2x</option>
+          </select>
+          <button class="player-btn" type="button" onclick="togglePlayerFullScreen()">Full</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function getCurrentPdfInfo(){
+  const course=getSelectedCourse();
+  const lessons=getFlattenedLessons(course);
+  const lesson=getSelectedLesson(course);
+  const lessonIndex=Math.max(0,lessons.findIndex(item=>item.id===lesson.id));
+  const rawUrl=String(lesson.assetUrl||'').trim()||createLessonPdfDataUrl(course,lesson,lessonIndex,lessons.length);
+  return {
+    course,
+    lesson,
+    url:rawUrl,
+    isGenerated:!String(lesson.assetUrl||'').trim(),
+    filename:`${slugify(`${course.title}-${lesson.title}`)}.${String(lesson.assetUrl||'').trim()?'pdf':'svg'}`
+  };
+}
+
+function openCurrentPdf(){
+  const info=getCurrentPdfInfo();
+  const opened=window.open(info.url,'_blank','noopener,noreferrer');
+  if(opened) opened.opener=null;
+}
+
+function downloadCurrentPdf(){
+  const info=getCurrentPdfInfo();
+  const link=document.createElement('a');
+  link.href=info.url;
+  link.download=info.filename;
+  link.rel='noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function printCurrentPdf(){
+  const frame=document.querySelector('.pdf-reader-frame');
+  try{
+    if(frame&&frame.contentWindow){
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+      return;
+    }
+  }catch(error){
+    console.warn('PDF print fallback used',error);
+  }
+  openCurrentPdf();
+  showToast('PDF opened','Use your browser print command from the opened document.','success');
+}
+
+function applyPdfViewTransform(){
+  const shell=getPdfShell();
+  if(shell){
+    shell.style.setProperty('--pdf-zoom',String(APP.state.pdfZoom||1));
+    shell.style.setProperty('--pdf-rotate',`${APP.state.pdfRotation||0}deg`);
+  }
+  const status=document.getElementById('pdfZoomStatus');
+  if(status) status.textContent=`${Math.round((APP.state.pdfZoom||1)*100)}%`;
+}
+
+function adjustPdfZoom(delta){
+  const next=Math.min(2.5,Math.max(0.5,Number((APP.state.pdfZoom+delta).toFixed(2))));
+  APP.state.pdfZoom=next;
+  applyPdfViewTransform();
+}
+
+function rotatePdfView(){
+  APP.state.pdfRotation=((APP.state.pdfRotation||0)+90)%360;
+  applyPdfViewTransform();
+}
+
+function resetPdfView(){
+  APP.state.pdfZoom=1;
+  APP.state.pdfRotation=0;
+  applyPdfViewTransform();
+}
+
+function getPlayerTabs(){
+  return [
+    ['overview','Overview'],
+    ['resources','Resources'],
+    ['assignments','Assignments'],
+    ['qa','Q&A'],
+    ['notes','Notes'],
+    ['ai','AI Assistant']
+  ];
+}
+
+function getAssignmentDraftKey(courseId,lessonId){
+  return `${courseId}:${lessonId}`;
+}
+
+function renderAssignmentsPanel(course,lessons,lesson){
+  const assignments=lessons.filter(item=>['assignment','quiz'].includes(String(item.type||'').toLowerCase()));
+  const currentIsAssignment=assignments.some(item=>item.id===lesson.id);
+  const activeAssignment=currentIsAssignment?lesson:(assignments[0]||null);
+  if(!assignments.length){
+    return `
+      <div class="empty-state" style="text-align:left">
+        <h3>No assignments yet</h3>
+        <p>This course does not have assignment lessons attached yet. Assignment-type lessons will appear here automatically.</p>
+      </div>
+    `;
+  }
+  const draftKey=activeAssignment?getAssignmentDraftKey(course.id,activeAssignment.id):'';
+  const draftValue=draftKey?APP.state.assignmentDrafts[draftKey]||'':'';
+  return `
+    <div style="display:grid;gap:14px">
+      ${assignments.map(item=>`
+        <div style="background:var(--surface);border:1px solid ${item.id===activeAssignment.id?'var(--gold)':'var(--border)'};border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div>
+            <div style="font-weight:700;color:var(--text);margin-bottom:2px">${escapeHtml(item.title)}</div>
+            <div style="font-size:.82rem;color:var(--text3)">${escapeHtml(item.moduleTitle)} - ${escapeHtml(item.duration)}</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="selectLesson('${course.id}','${item.id}','assignments')">${item.id===lesson.id?'Open':'Go'}</button>
+        </div>
+      `).join('')}
+      ${activeAssignment?`
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
+          <h4 style="font-family:'Syne',sans-serif;font-size:.95rem;margin-bottom:8px;color:var(--text)">${escapeHtml(activeAssignment.title)}</h4>
+          <p style="font-size:.88rem;margin-bottom:12px">${escapeHtml(activeAssignment.summary||'Write your response, checklist, or project notes for this assignment.')}</p>
+          <textarea id="assignmentDraft" class="player-notes" style="min-height:130px" placeholder="Draft your assignment response...">${escapeHtml(draftValue)}</textarea>
+          <div style="display:flex;justify-content:flex-end;margin-top:12px">
+            <button class="btn btn-primary btn-sm" type="button" onclick="saveAssignmentDraft('${course.id}','${activeAssignment.id}')">Save Assignment</button>
+          </div>
+        </div>
+      `:''}
+    </div>
+  `;
+}
+
+function saveAssignmentDraft(courseId,lessonId){
+  const textarea=document.getElementById('assignmentDraft');
+  if(!textarea) return;
+  const key=getAssignmentDraftKey(courseId,lessonId);
+  APP.state.assignmentDrafts[key]=textarea.value;
+  saveStorage('skillforge-assignment-drafts',APP.state.assignmentDrafts);
+  APP.request('assignment.save',{courseId,lessonId,response:textarea.value},'/api/assignments');
+  showToast('Assignment saved','Your assignment draft is stored locally and queued for backend submission.','success');
+}
+
+function getActiveMediaElement(){
+  return document.getElementById('lessonMedia');
+}
+
+function getMediaProgressPercent(course,lesson){
+  const duration=getLessonDurationSeconds(course,lesson);
+  const current=getLessonCurrentSeconds(course,lesson);
+  return duration?Math.min(100,Math.max(0,Math.round((current/duration)*100))):APP.state.playerProgress;
+}
+
+function renderPlayer(){
+  const view=document.getElementById('view-player');
+  if(!view) return;
+  stopFallbackPlayback();
+  const course=getSelectedCourse();
+  const lessons=getFlattenedLessons(course);
+  const lesson=getSelectedLesson(course);
+  const lessonIndex=lessons.findIndex(item=>item.id===lesson.id);
+  const thread=getPlayerThread(course);
+  const savedNotes=APP.state.notes[course.id]||'';
+  const completedCount=lessons.filter(item=>item.done).length;
+  const mediaKind=getLessonMediaKind(lesson);
+  const isTimedMedia=!['pdf','assignment','asset'].includes(mediaKind);
+  const duration=getLessonDurationSeconds(course,lesson);
+  const current=getLessonCurrentSeconds(course,lesson);
+  const progress=getMediaProgressPercent(course,lesson);
+  const tabs=getPlayerTabs();
+  const isPdfViewer=mediaKind==='pdf';
+  const viewerContainerClass=isPdfViewer?'pdf-viewer-container':'video-viewer-container';
+  const viewerLabel=isPdfViewer?'PDF viewer':'Video viewer';
+  if(!tabs.some(([key])=>key===APP.state.playerTab)){
+    APP.state.playerTab='overview';
+  }
+  view.innerHTML=`
+    <div style="padding-top:68px">
+      <div class="player-layout">
+        <div class="player-main">
+          <div class="player-video ${viewerContainerClass}" aria-label="${viewerLabel}"></div>
+          ${isPdfViewer?renderPdfControlPanel():renderVideoControlPanel(isTimedMedia,progress,current,duration,mediaKind)}
+          <div class="player-content">
+            <div class="player-lesson-title">${escapeHtml(course.title)}</div>
+            <p style="font-size:.85rem;color:var(--text3);margin-bottom:16px">${escapeHtml(lesson.moduleTitle)} - ${escapeHtml(course.track)}</p>
+            <div class="player-tabs">
+              ${tabs.map(([key,label])=>`<button class="player-tab ${APP.state.playerTab===key?'active':''}" type="button" onclick="setPlayerTab('${key}')">${label}</button>`).join('')}
+            </div>
+            <div class="player-panel ${APP.state.playerTab==='overview'?'active':''}">
+              <p style="font-size:.92rem;margin-bottom:16px">${escapeHtml(lesson.summary||course.overview)}</p>
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px">
+                <h4 style="font-family:'Syne',sans-serif;font-size:.9rem;margin-bottom:10px;color:var(--text)">Current lesson</h4>
+                <ul style="list-style:none;font-size:.85rem;color:var(--text2)">
+                  <li style="padding:4px 0">Type: ${escapeHtml(String(lesson.type||mediaKind).toUpperCase())}</li>
+                  <li style="padding:4px 0">Duration: ${escapeHtml(lesson.duration||'Self-paced')}</li>
+                  <li style="padding:4px 0">Position: ${lessonIndex+1} of ${lessons.length}</li>
+                </ul>
+              </div>
+            </div>
+            <div class="player-panel ${APP.state.playerTab==='resources'?'active':''}">
+              <div style="display:grid;gap:12px">
+                ${course.resources.length?course.resources.map(resource=>`
+                  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+                    <div>
+                      <div style="font-weight:600;color:var(--text);margin-bottom:2px">${escapeHtml(resource)}</div>
+                      <div style="font-size:.82rem;color:var(--text3)">Resource ready for file delivery or signed URL access.</div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="downloadResource('${course.id}','${escapeHtml(resource)}')">Queue Download</button>
+                  </div>
+                `).join(''):'<div class="empty-state" style="text-align:left"><h3>No resources yet</h3><p>This lesson will show resources as soon as they are attached to the course.</p></div>'}
+              </div>
+            </div>
+            <div class="player-panel ${APP.state.playerTab==='assignments'?'active':''}">
+              ${renderAssignmentsPanel(course,lessons,lesson)}
+            </div>
+            <div class="player-panel ${APP.state.playerTab==='qa'?'active':''}">
+              ${course.qa.length?course.qa.map(item=>`
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px">
+                  <div style="font-weight:600;color:var(--text);margin-bottom:6px">${escapeHtml(item.question)}</div>
+                  <p style="font-size:.88rem">${escapeHtml(item.answer)}</p>
+                </div>
+              `).join(''):'<div class="empty-state" style="text-align:left"><h3>No Q&A yet</h3><p>Questions and answers for this lesson will appear here.</p></div>'}
+            </div>
+            <div class="player-panel ${APP.state.playerTab==='notes'?'active':''}">
+              <textarea id="playerNotes" class="player-notes" placeholder="Capture ideas, task lists, or implementation notes for this course...">${escapeHtml(savedNotes)}</textarea>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap">
+                <span style="font-size:.82rem;color:var(--text3)">Notes are saved to your browser and queued for the notes API.</span>
+                <button class="btn btn-primary btn-sm" type="button" onclick="savePlayerNotes()">Save Notes</button>
+              </div>
+            </div>
+            <div class="player-panel ${APP.state.playerTab==='ai'?'active':''}">
+              <div class="ai-chat" style="max-height:none;background:transparent;border:none;padding:0">
+                <div class="ai-messages">${renderChatMessages(thread)}</div>
+                <form style="display:flex;gap:8px;margin-top:10px" onsubmit="submitPlayerAiPrompt(event)">
+                  <input type="text" id="playerAiInput" placeholder="Ask about this lesson, your next project, or where to practice..." style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.88rem;outline:none">
+                  <button class="btn btn-primary btn-sm" type="submit">Ask -></button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="player-sidebar">
+          <div class="player-sidebar-header">
+            <div>Course Content</div>
+            <div style="font-size:.75rem;color:var(--text3);font-family:'DM Sans',sans-serif;font-weight:400;margin-top:2px">${completedCount} / ${lessons.length} lessons completed</div>
+          </div>
+          ${course.modules.map((module,moduleIndex)=>`
+            <div class="player-module">
+              <div class="player-module-header">
+                <span style="font-size:.75rem;color:var(--text3)">M${moduleIndex+1}</span>
+                <div class="player-module-title">${escapeHtml(module.title)}</div>
+                <span class="badge ${module.lessons.every(item=>item.done)?'badge-green':'badge-gray'}" style="padding:2px 8px;font-size:.68rem">${module.lessons.every(item=>item.done)?'Done':'Live'}</span>
+              </div>
+              ${module.lessons.map(item=>`
+                <div class="player-lesson-item ${item.id===lesson.id?'active':''} ${item.done?'done':''}" onclick="selectLesson('${course.id}','${item.id}')">
+                  <div class="player-lesson-check ${item.done?'done':''}">${item.id===lesson.id?'Now':item.done?'Done':String(item.type||'video').slice(0,3).toUpperCase()}</div>
+                  <div class="player-lesson-name">${escapeHtml(item.title)}</div>
+                  <div class="player-lesson-dur">${escapeHtml(item.duration)}</div>
+                </div>
+              `).join('')}
+            </div>
+          `).join('')}
+          <div style="padding:16px">
+            <button class="btn btn-ghost btn-sm" type="button" style="width:100%;justify-content:center" onclick="showView('dashboard')">&lt;- Back to Dashboard</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  const playerMediaHost=view.querySelector('.player-video');
+  if(playerMediaHost){
+    playerMediaHost.innerHTML=renderLessonMedia(course,lesson,lessonIndex,lessons.length);
+  }
+  bindMediaPlayer(course,lesson);
+  setPdfTheme(APP.state.pdfTheme);
+  applyPdfViewTransform();
+  syncPdfFullscreenState();
+}
+
+function setPlayerTab(tab){
+  if(!getPlayerTabs().some(([key])=>key===tab)) return;
+  APP.state.playerTab=tab;
+  renderPlayer();
+  syncHash();
+}
+
+function selectLesson(courseId,lessonId,nextTab){
+  APP.state.selectedCourseId=courseId;
+  APP.state.selectedLessonId=lessonId;
+  if(nextTab) APP.state.playerTab=nextTab;
+  APP.state.isPlaying=false;
+  APP.state.playerProgress=getMediaProgressPercent(getSelectedCourse(),getSelectedLesson(getSelectedCourse()));
+  renderPlayer();
+  syncHash();
+}
+
+function changeLesson(direction){
+  const course=getSelectedCourse();
+  const lessons=getFlattenedLessons(course);
+  const currentIndex=lessons.findIndex(item=>item.id===APP.state.selectedLessonId);
+  const safeIndex=currentIndex<0?0:currentIndex;
+  const nextIndex=Math.min(Math.max(safeIndex+direction,0),lessons.length-1);
+  if(nextIndex===safeIndex){
+    showToast('No more lessons in this direction','You are already at the edge of the current lesson list.','error');
+    return;
+  }
+  APP.state.selectedLessonId=lessons[nextIndex].id;
+  APP.state.isPlaying=false;
+  renderPlayer();
+  syncHash();
+}
+
+function bindMediaPlayer(course,lesson){
+  const media=getActiveMediaElement();
+  if(!media){
+    syncMediaControls(null,course,lesson);
+    if(APP.state.isPlaying) startFallbackPlayback(course,lesson);
+    return;
+  }
+  const rate=parseFloat(APP.state.playbackSpeed)||1;
+  media.playbackRate=rate;
+  media.muted=APP.state.isMuted;
+  const restorePosition=()=>{
+    const saved=getLessonCurrentSeconds(course,lesson);
+    if(saved&&Number.isFinite(media.duration)&&Math.abs(media.currentTime-saved)>1){
+      media.currentTime=Math.min(saved,Math.max(0,media.duration-.25));
+    }
+    setLessonPlaybackPosition(course,lesson,media.currentTime||saved,Number.isFinite(media.duration)?media.duration:getLessonDurationSeconds(course,lesson));
+    syncMediaControls(media,course,lesson);
+    syncCaptionMode(media);
+  };
+  media.addEventListener('loadedmetadata',restorePosition,{once:true});
+  media.addEventListener('timeupdate',()=>syncMediaControls(media,course,lesson));
+  media.addEventListener('durationchange',()=>syncMediaControls(media,course,lesson));
+  media.addEventListener('play',()=>{APP.state.isPlaying=true;syncMediaControls(media,course,lesson);});
+  media.addEventListener('pause',()=>{APP.state.isPlaying=false;syncMediaControls(media,course,lesson);});
+  media.addEventListener('ended',()=>{
+    APP.state.isPlaying=false;
+    syncMediaControls(media,course,lesson);
+  });
+  if(media.readyState>=1) restorePosition();
+  if(APP.state.isPlaying){
+    media.play().catch(()=>{
+      APP.state.isPlaying=false;
+      syncMediaControls(media,course,lesson);
+    });
+  }else{
+    syncMediaControls(media,course,lesson);
+  }
+}
+
+function syncMediaControls(media,course=getSelectedCourse(),lesson=getSelectedLesson(getSelectedCourse())){
+  const duration=media&&Number.isFinite(media.duration)?media.duration:getLessonDurationSeconds(course,lesson);
+  const current=media?media.currentTime:getLessonCurrentSeconds(course,lesson);
+  setLessonPlaybackPosition(course,lesson,current,duration);
+  const fill=document.getElementById('playerProgressFill');
+  const time=document.getElementById('playerTime');
+  const playButton=document.getElementById('playerPlayButton');
+  const audioButton=document.getElementById('playerAudioButton');
+  const ccButton=document.getElementById('playerCcButton');
+  if(fill) fill.style.width=`${duration?Math.min(100,Math.max(0,(current/duration)*100)):0}%`;
+  if(time) time.textContent=formatMediaStatus(current,duration);
+  if(playButton) playButton.textContent=APP.state.isPlaying?'Pause':'Play';
+  if(audioButton){
+    audioButton.textContent=APP.state.isMuted?'Muted':'Audio';
+    audioButton.classList.toggle('active',APP.state.isMuted);
+    audioButton.setAttribute('aria-pressed',APP.state.isMuted?'true':'false');
+  }
+  if(ccButton){
+    ccButton.classList.toggle('active',APP.state.captionsEnabled);
+    ccButton.setAttribute('aria-pressed',APP.state.captionsEnabled?'true':'false');
+  }
+  const caption=document.getElementById('playerCaptionOverlay');
+  if(caption) caption.classList.toggle('active',APP.state.captionsEnabled);
+}
+
+function syncCaptionMode(media=getActiveMediaElement()){
+  if(!media||!media.textTracks) return;
+  Array.from(media.textTracks).forEach(track=>{
+    track.mode=APP.state.captionsEnabled?'showing':'disabled';
+  });
+}
+
+function startFallbackPlayback(course,lesson){
+  stopFallbackPlayback();
+  const duration=getLessonDurationSeconds(course,lesson);
+  if(!duration){
+    APP.state.isPlaying=false;
+    syncMediaControls(null,course,lesson);
+    return;
+  }
+  playerFallbackTimer=setInterval(()=>{
+    const rate=parseFloat(APP.state.playbackSpeed)||1;
+    const current=Math.min(duration,getLessonCurrentSeconds(course,lesson)+rate);
+    setLessonPlaybackPosition(course,lesson,current,duration);
+    if(current>=duration){
+      APP.state.isPlaying=false;
+      stopFallbackPlayback();
+    }
+    syncMediaControls(null,course,lesson);
+  },1000);
+}
+
+function stopFallbackPlayback(){
+  if(playerFallbackTimer){
+    clearInterval(playerFallbackTimer);
+    playerFallbackTimer=null;
+  }
+}
+
+function togglePlayback(){
+  const course=getSelectedCourse();
+  const lesson=getSelectedLesson(course);
+  const media=getActiveMediaElement();
+  if(media){
+    if(media.paused){
+      media.play().catch(()=>showToast('Playback blocked','Use the lesson media once and playback will continue normally.','error'));
+    }else{
+      media.pause();
+    }
+    return;
+  }
+  APP.state.isPlaying=!APP.state.isPlaying;
+  if(APP.state.isPlaying) startFallbackPlayback(course,lesson);
+  else stopFallbackPlayback();
+  syncMediaControls(null,course,lesson);
+}
+
+function toggleMuteHint(){
+  APP.state.isMuted=!APP.state.isMuted;
+  const media=getActiveMediaElement();
+  if(media) media.muted=APP.state.isMuted;
+  syncMediaControls(media);
+}
+
+function toggleCaptions(){
+  APP.state.captionsEnabled=!APP.state.captionsEnabled;
+  syncCaptionMode();
+  syncMediaControls(getActiveMediaElement());
+}
+
+function seekPlayer(event){
+  const course=getSelectedCourse();
+  const lesson=getSelectedLesson(course);
+  const duration=getActiveMediaElement()?.duration||getLessonDurationSeconds(course,lesson);
+  if(!duration) return;
+  const bar=event.currentTarget;
+  const rect=bar.getBoundingClientRect();
+  const ratio=Math.min(Math.max((event.clientX-rect.left)/rect.width,0),1);
+  const targetTime=duration*ratio;
+  const media=getActiveMediaElement();
+  if(media) media.currentTime=targetTime;
+  setLessonPlaybackPosition(course,lesson,targetTime,duration);
+  syncMediaControls(media,course,lesson);
+}
+
+function updatePlayerProgress(event){
+  seekPlayer(event);
+}
+
+function setPlaybackSpeed(value){
+  APP.state.playbackSpeed=value;
+  const media=getActiveMediaElement();
+  if(media) media.playbackRate=parseFloat(value)||1;
+  syncMediaControls(media);
+}
+
+function togglePlayerFullScreen(){
+  const host=document.querySelector('#view-player .player-video');
+  if(!host) return;
+  if(document.fullscreenElement===host){
+    document.exitFullscreen();
+    return;
+  }
+  if(host.requestFullscreen) host.requestFullscreen();
+}
+
+function getPdfShell(){
+  return document.getElementById('pdfReaderShell');
+}
+
+function revealPdfOverlay(){
+  const shell=getPdfShell();
+  if(!shell) return;
+  shell.classList.add('overlay-visible');
+  clearTimeout(pdfOverlayTimer);
+  pdfOverlayTimer=setTimeout(()=>shell.classList.remove('overlay-visible'),2200);
+}
+
+async function enterPdfFullScreen(){
+  const shell=getPdfShell();
+  if(!shell) return;
+  revealPdfOverlay();
+  try{
+    if(shell.requestFullscreen){
+      await shell.requestFullscreen();
+    }else{
+      shell.classList.add('pdf-fallback-fullscreen');
+    }
+  }catch(error){
+    shell.classList.add('pdf-fallback-fullscreen');
+  }
+  syncPdfFullscreenState();
+}
+
+async function exitPdfFullScreen(){
+  const shell=getPdfShell();
+  if(document.fullscreenElement){
+    await document.exitFullscreen();
+  }
+  if(shell) shell.classList.remove('pdf-fallback-fullscreen');
+  syncPdfFullscreenState();
+}
+
+function togglePdfFullScreen(){
+  const shell=getPdfShell();
+  if(!shell) return;
+  const isFull=document.fullscreenElement===shell||shell.classList.contains('pdf-fallback-fullscreen');
+  if(isFull) exitPdfFullScreen();
+  else enterPdfFullScreen();
+}
+
+function syncPdfFullscreenState(){
+  document.querySelectorAll('.pdf-reader-shell').forEach(shell=>{
+    shell.classList.toggle('is-fullscreen',document.fullscreenElement===shell||shell.classList.contains('pdf-fallback-fullscreen'));
+  });
 }
 
 function buildTutorReply(prompt,course){
@@ -3591,6 +4498,7 @@ function buildInstructorCourseDraft(course){
   next.learn=Array.isArray(next.learn)&&next.learn.length?cloneData(next.learn):cloneData(category.learn);
   next.resources=Array.isArray(next.resources)&&next.resources.length?cloneData(next.resources):cloneData(category.resources);
   next.qa=Array.isArray(next.qa)&&next.qa.length?cloneData(next.qa):cloneData(category.qa);
+  next.includes=Array.isArray(next.includes)?next.includes.map(item=>String(item||'').trim()).filter(Boolean):[];
   next.modules=(Array.isArray(next.modules)?next.modules:[]).map((module,moduleIndex)=>buildInstructorModuleDraft(next.id,moduleIndex,module));
   if(!next.modules.length){
     next.modules=[buildInstructorModuleDraft(next.id,0,{})];
@@ -3667,6 +4575,27 @@ function updateInstructorCourseField(field,value){
     return;
   }
   draft[field]=typeof value==='string'?value:value;
+}
+
+function updateInstructorInclude(index,value){
+  const draft=APP.state.instructorCourseDraft;
+  if(!draft||!Array.isArray(draft.includes)||!draft.includes[index]) return;
+  draft.includes[index]=String(value||'');
+}
+
+function addInstructorInclude(){
+  const draft=APP.state.instructorCourseDraft;
+  if(!draft) return;
+  draft.includes=Array.isArray(draft.includes)?draft.includes:[];
+  draft.includes.push('');
+  renderInstructorCourseStudio();
+}
+
+function removeInstructorInclude(index){
+  const draft=APP.state.instructorCourseDraft;
+  if(!draft||!Array.isArray(draft.includes)) return;
+  draft.includes.splice(index,1);
+  renderInstructorCourseStudio();
 }
 
 function useInstructorAutoThumbnail(){
@@ -3784,6 +4713,7 @@ function buildInstructorCoursePayload(draft){
     learn:cloneData(Array.isArray(draft.learn)&&draft.learn.length?draft.learn:category.learn),
     resources:cloneData(Array.isArray(draft.resources)&&draft.resources.length?draft.resources:category.resources),
     qa:cloneData(Array.isArray(draft.qa)&&draft.qa.length?draft.qa:category.qa),
+    includes:(Array.isArray(draft.includes)?draft.includes:[]).map(item=>String(item||'').trim()).filter(Boolean),
     modules
   };
 }
@@ -4058,6 +4988,21 @@ function renderInstructorCourseStudio(){
                     <button class="btn btn-primary btn-sm" type="button" onclick="renderInstructorCourseStudio()">Refresh Preview</button>
                   </div>
                   <textarea class="studio-textarea" placeholder="Course overview" oninput="updateInstructorCourseField('overview', this.value)">${escapeHtml(draft.overview)}</textarea>
+                  <div class="studio-stack">
+                    <div class="studio-editor-header">
+                      <div>
+                        <h4>Course Buttons</h4>
+                        <p>These appear as individual buttons in the course sidebar.</p>
+                      </div>
+                      <button class="btn btn-ghost btn-sm" type="button" onclick="addInstructorInclude()">Add Button</button>
+                    </div>
+                    ${(draft.includes||[]).map((item,index)=>`
+                      <div class="studio-inline-grid">
+                        <input class="studio-input" value="${escapeHtml(item)}" placeholder="Button text" oninput="updateInstructorInclude(${index}, this.value)">
+                        <button class="btn btn-ghost btn-sm" type="button" onclick="removeInstructorInclude(${index})">Remove</button>
+                      </div>
+                    `).join('')}
+                  </div>
                 </div>
                 <div class="studio-helper">Tip: uploaded video or PDF lesson assets use the lesson asset URL, not the course thumbnail field.</div>
               </div>
@@ -4346,19 +5291,45 @@ function hydrateFromHash(){
     showView('home',{updateHash:false});
     return;
   }
-  const [view,courseId]=hash.split('/');
+  const [view,courseId,lessonId,tab]=hash.split('/');
   const validViews=new Set(['home','courses','detail','dashboard','instructor','player']);
   if(courseId&&COURSE_INDEX[courseId]){
     APP.state.selectedCourseId=courseId;
+  }
+  if(view==='player'){
+    const course=getSelectedCourse();
+    const lessons=getFlattenedLessons(course);
+    if(lessonId&&lessons.some(lesson=>lesson.id===lessonId)){
+      APP.state.selectedLessonId=lessonId;
+    }
+    if(tab&&getPlayerTabs().some(([key])=>key===tab)){
+      APP.state.playerTab=tab;
+    }
   }
   showView(validViews.has(view)?view:'home',{updateHash:false});
 }
 
 window.addEventListener('hashchange',hydrateFromHash);
 window.addEventListener('keydown',event=>{
-  if(event.key==='Escape') closeModal();
+  const isPdfLesson=APP.state.view==='player'&&getLessonMediaKind(getSelectedLesson(getSelectedCourse()))==='pdf';
+  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='l'&&isPdfLesson){
+    event.preventDefault();
+    togglePdfFullScreen();
+    return;
+  }
+  if(event.key==='Escape'){
+    const shell=getPdfShell();
+    if(shell&&(document.fullscreenElement===shell||shell.classList.contains('pdf-fallback-fullscreen'))){
+      event.preventDefault();
+      exitPdfFullScreen();
+      return;
+    }
+    closeModal();
+  }
 });
+document.addEventListener('fullscreenchange',syncPdfFullscreenState);
 
+applyAppTheme(APP.state.appTheme);
 hydrateStoredCourses();
 renderCourses();
 renderCourseDetail();

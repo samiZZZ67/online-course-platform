@@ -105,6 +105,7 @@ class SkillForgeApiTests(TestCase):
         self.assertEqual(detail_response.status_code, 200)
         detail = detail_response.json()
         self.assertEqual(detail["course"]["id"], "claude-ai-engineering")
+        self.assertEqual(detail["course"]["includes"], [])
 
     def test_authentication_docs_endpoints_are_available(self):
         openapi_response = self.client.get("/api/docs/openapi.json")
@@ -888,11 +889,38 @@ class SkillForgeApiTests(TestCase):
         form_lesson = form.save()
         self.assertTrue(form_lesson.lesson_key.startswith("claude-ai-engineering-m99-l2-hour-2-content-plan"))
 
+        with TemporaryDirectory() as media_root:
+            with self.settings(MEDIA_ROOT=media_root):
+                upload = SimpleUploadedFile("prototype.mp4", b"prototype-video-content", content_type="video/mp4")
+                upload_form = academy_admin.CourseLessonAdminForm(
+                    data={
+                        "module": module.pk,
+                        "position": 3,
+                        "lesson_key": "",
+                        "title": "Uploaded prototype video",
+                        "summary": "Prototype video uploaded from Django admin.",
+                        "duration_label": "05:00",
+                        "content_type": models.CourseLesson.TYPE_ASSIGNMENT,
+                        "asset_url": "",
+                        "is_published": "on",
+                    },
+                    files={"media_file": upload},
+                )
+                self.assertTrue(upload_form.is_valid(), upload_form.errors.as_json())
+                uploaded_lesson = upload_form.save()
+                self.assertEqual(uploaded_lesson.content_type, models.CourseLesson.TYPE_VIDEO)
+                self.assertIn("/media/course-assets/claude-ai-engineering/", uploaded_lesson.asset_url)
+                asset_response = self.client.get(uploaded_lesson.asset_url, HTTP_RANGE="bytes=0-8")
+                self.assertEqual(asset_response.status_code, 206)
+                self.assertEqual(asset_response.headers["Accept-Ranges"], "bytes")
+                self.assertEqual(b"".join(asset_response.streaming_content), b"prototype")
+
         refresh_course_structure_snapshot(course)
         course.refresh_from_db()
         module_payload = next(item for item in course.modules if item["title"] == "Admin hour outline")
         self.assertEqual(module_payload["summary"], "What learners cover in this hour.")
         self.assertEqual(module_payload["lessons"][0]["summary"], "Set the learning outcome, explain the work, and assign practice.")
+        self.assertTrue(module_payload["lessons"][2]["assetUrl"].endswith(".mp4"))
 
     def test_course_list_supports_category_and_search_filters(self):
         category_response = self.client.get("/api/courses?category=ai")
@@ -1050,6 +1078,7 @@ class SkillForgeApiTests(TestCase):
                         "lessons": 14,
                         "hours": 7,
                         "level": "Intermediate",
+                        "includes": ["Private onboarding call", "Downloadable project checklist"],
                     }
                 }
             ),
@@ -1059,6 +1088,7 @@ class SkillForgeApiTests(TestCase):
         created = create_response.json()
         self.assertTrue(created["ok"])
         self.assertEqual(created["course"]["title"], "Backend Systems for Creators")
+        self.assertEqual(created["course"]["includes"], ["Private onboarding call", "Downloadable project checklist"])
         self.assertTrue(created["course"]["isCustom"])
 
         thumbnail_response = self.client.post(

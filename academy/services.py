@@ -297,6 +297,7 @@ def serialize_course(course: models.Course) -> dict[str, Any]:
         "learn": learn,
         "resources": resources,
         "qa": qa,
+        "includes": clone_json(course.includes),
         "modules": modules,
         "moduleCount": len(modules),
         "freeLessonCount": sum(1 for module in modules for lesson in module.get("lessons", []) if lesson.get("free")),
@@ -355,7 +356,7 @@ def parse_course_input(source: dict[str, Any], existing: models.Course | None = 
     existing_payload = serialize_course(existing) if existing else None
     normalized = catalog.normalize_course_input(source, existing_payload)
     normalized = catalog.enrich_course(normalized)
-    for field_name in ("requirements", "learn", "resources", "qa"):
+    for field_name in ("requirements", "learn", "resources", "qa", "includes"):
         if isinstance(source.get(field_name), list):
             normalized[field_name] = clone_json(source[field_name])
     modules_source = source.get("modules") if isinstance(source.get("modules"), list) else normalized.get("modules", [])
@@ -423,6 +424,7 @@ def apply_course_payload(course: models.Course, payload: dict[str, Any], *, is_c
     course.learn = payload["learn"]
     course.resources = payload["resources"]
     course.qa = payload["qa"]
+    course.includes = clone_json(payload.get("includes", []))
     course.modules = payload["modules"]
     course.is_custom = is_custom
     course.created_by = created_by if is_custom else None
