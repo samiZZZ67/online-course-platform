@@ -325,6 +325,22 @@ class LessonProgressAdmin(admin.ModelAdmin):
     list_filter = ("status", "lesson__content_type")
 
 
+@admin.register(models.LessonQuestion)
+class LessonQuestionAdmin(admin.ModelAdmin):
+    list_display = ("question", "course", "lesson", "timestamp_seconds", "position", "is_published")
+    list_filter = ("is_published", "course__category")
+    search_fields = ("question", "answer", "course__title", "lesson__title")
+    autocomplete_fields = ("course", "lesson")
+    fields = ("course", "lesson", "position", "timestamp_seconds", "question", "answer", "is_published", "metadata")
+
+
+@admin.register(models.QuestionCompletion)
+class QuestionCompletionAdmin(admin.ModelAdmin):
+    list_display = ("email", "course", "lesson", "question_key", "completed", "completed_at", "updated_at")
+    list_filter = ("completed", "course__category")
+    search_fields = ("email", "question_key", "course__title", "lesson__title")
+
+
 @admin.register(models.WishlistItem)
 class WishlistItemAdmin(admin.ModelAdmin):
     list_display = ("course", "email", "created_at")
@@ -335,6 +351,35 @@ class WishlistItemAdmin(admin.ModelAdmin):
 class UserCourseNoteAdmin(admin.ModelAdmin):
     list_display = ("course", "email", "updated_at")
     search_fields = ("email", "course__title", "notes")
+
+
+@admin.register(models.NotebookNote)
+class NotebookNoteAdmin(admin.ModelAdmin):
+    list_display = ("title", "email", "course", "lesson", "category", "pinned", "is_deleted", "updated_at")
+    list_filter = ("category", "pinned", "is_deleted", "course__category")
+    search_fields = ("title", "body_preview", "email", "course__title", "lesson__title")
+    readonly_fields = ("version", "created_at", "updated_at", "last_synced_at")
+
+
+@admin.register(models.NotebookNoteVersion)
+class NotebookNoteVersionAdmin(admin.ModelAdmin):
+    list_display = ("note", "version", "title", "category", "created_at")
+    search_fields = ("note__email", "title", "body_preview")
+    list_filter = ("category",)
+
+
+@admin.register(models.NotebookAttachment)
+class NotebookAttachmentAdmin(admin.ModelAdmin):
+    list_display = ("name", "email", "course", "note", "content_type", "size", "created_at")
+    search_fields = ("name", "email", "course__title", "note__title")
+    list_filter = ("content_type", "course__category")
+
+
+@admin.register(models.AssignmentSubmission)
+class AssignmentSubmissionAdmin(admin.ModelAdmin):
+    list_display = ("email", "course", "lesson", "status", "grade", "updated_at")
+    list_filter = ("status", "course__category")
+    search_fields = ("email", "course__title", "lesson__title", "response", "feedback")
 
 
 @admin.register(models.PlatformNotification)

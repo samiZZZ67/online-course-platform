@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -327,6 +329,58 @@ class LessonProgress(UserEmailMixin):
         ]
 
 
+class LessonQuestion(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="lesson_questions")
+    lesson = models.ForeignKey(
+        CourseLesson,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="questions",
+    )
+    question = models.CharField(max_length=500)
+    answer = models.TextField(blank=True)
+    timestamp_seconds = models.PositiveIntegerField(default=0)
+    position = models.PositiveIntegerField(default=1, db_index=True)
+    is_published = models.BooleanField(default=True, db_index=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["lesson__module__position", "lesson__position", "position", "created_at"]
+
+    def __str__(self) -> str:
+        return self.question
+
+
+class QuestionCompletion(UserEmailMixin):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="question_completions")
+    lesson = models.ForeignKey(
+        CourseLesson,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="question_completions",
+    )
+    question = models.ForeignKey(
+        LessonQuestion,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="completions",
+    )
+    question_key = models.CharField(max_length=180, db_index=True)
+    completed = models.BooleanField(default=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["email", "course", "question_key"], name="unique_question_completion_email_course_key"),
+        ]
+
+
 class WishlistItem(UserEmailMixin):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="wishlist_items")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -346,6 +400,99 @@ class UserCourseNote(UserEmailMixin):
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=["email", "course"], name="unique_note_email_course"),
+        ]
+
+
+class NotebookNote(UserEmailMixin):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="notebook_notes")
+    lesson = models.ForeignKey(
+        CourseLesson,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="notebook_notes",
+    )
+    title = models.CharField(max_length=255, blank=True)
+    encrypted_body = models.TextField(blank=True)
+    body_preview = models.TextField(blank=True)
+    category = models.CharField(max_length=120, default="General", db_index=True)
+    tags = models.JSONField(default=list, blank=True)
+    pinned = models.BooleanField(default=False, db_index=True)
+    timestamp_seconds = models.PositiveIntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+    shared_with = models.JSONField(default=list, blank=True)
+    is_deleted = models.BooleanField(default=False, db_index=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-pinned", "-updated_at"]
+
+    def __str__(self) -> str:
+        return self.title or f"Notebook note for {self.email}"
+
+
+class NotebookNoteVersion(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    note = models.ForeignKey(NotebookNote, on_delete=models.CASCADE, related_name="versions")
+    version = models.PositiveIntegerField()
+    title = models.CharField(max_length=255, blank=True)
+    encrypted_body = models.TextField(blank=True)
+    body_preview = models.TextField(blank=True)
+    category = models.CharField(max_length=120, default="General")
+    tags = models.JSONField(default=list, blank=True)
+    timestamp_seconds = models.PositiveIntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.note_id} v{self.version}"
+
+
+class NotebookAttachment(UserEmailMixin):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="notebook_attachments")
+    note = models.ForeignKey(
+        NotebookNote,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="attachments",
+    )
+    file = models.FileField(upload_to="notebook-attachments/%Y/%m/")
+    name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=120, blank=True)
+    size = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class AssignmentSubmission(UserEmailMixin):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="assignment_submissions")
+    lesson = models.ForeignKey(CourseLesson, on_delete=models.CASCADE, related_name="assignment_submissions")
+    response = models.TextField(blank=True)
+    status = models.CharField(max_length=32, default="draft", db_index=True)
+    grade = models.CharField(max_length=32, blank=True)
+    feedback = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["email", "lesson"], name="unique_assignment_submission_email_lesson"),
         ]
 
 

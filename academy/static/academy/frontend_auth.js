@@ -177,6 +177,57 @@
     return result;
   }
 
+  function shouldUseGetForAction(type, endpoint) {
+    const actionType = String(type || "");
+    return actionType.indexOf(".fetch") >= 0 || actionType.indexOf(".download") >= 0 || String(endpoint || "").indexOf("?") >= 0;
+  }
+
+  async function appApiRequest(type, payload, endpoint) {
+    const action = {
+      type: type,
+      payload: payload,
+      endpoint: endpoint,
+      timestamp: new Date().toISOString()
+    };
+    const app = window.SkillForgeApp;
+    if (app && Array.isArray(app.actionQueue)) {
+      app.actionQueue.push(action);
+    }
+    window.dispatchEvent(new CustomEvent("skillforge:action", { detail: action }));
+    if (!endpoint || String(endpoint).indexOf("/api/") !== 0) {
+      return { ok: true, queued: true, action: action, data: {} };
+    }
+
+    const isForm = typeof window !== "undefined" && payload instanceof window.FormData;
+    const useGet = shouldUseGetForAction(type, endpoint);
+    let url = endpoint;
+    const init = { method: useGet ? "GET" : "POST" };
+    if (useGet && payload && !isForm) {
+      const params = new URLSearchParams();
+      Object.keys(payload).forEach(function (key) {
+        const value = payload[key];
+        if (value !== undefined && value !== null && value !== "") {
+          params.set(key, String(value));
+        }
+      });
+      const query = params.toString();
+      if (query) {
+        url += (url.indexOf("?") >= 0 ? "&" : "?") + query;
+      }
+    } else if (isForm) {
+      init.body = payload;
+    } else {
+      init.body = JSON.stringify(payload || {});
+    }
+    const result = await requestJson(url, init);
+    return {
+      ok: result.response.ok,
+      response: result.response,
+      data: result.data,
+      action: action
+    };
+  }
+
   function readStorageJson(key, fallback) {
     try {
       const raw = window.localStorage.getItem(key);
@@ -566,9 +617,13 @@
     if (!state.authenticated || !courseId) {
       return;
     }
+    const skillState = appState();
+    const lessonId = skillState ? skillState.selectedLessonId : "";
+    const positionKey = skillState && lessonId ? courseId + ":" + lessonId : "";
+    const positionSeconds = skillState && positionKey && skillState.mediaPositions ? (skillState.mediaPositions[positionKey] || 0) : 0;
     const result = await requestJson("/api/enrollments/progress", {
       method: "POST",
-      body: JSON.stringify({ courseId: courseId, progressPercent: progressPercent })
+      body: JSON.stringify({ courseId: courseId, lessonId: lessonId, progressPercent: progressPercent, positionSeconds: positionSeconds })
     });
     if (result.response.ok && result.data.enrollment) {
       upsertEnrollment(result.data.enrollment);
@@ -875,7 +930,9 @@
       window.showView = function (view) {
         if (view === "instructor" && !isInstructorUser()) {
           safeToast("Instructor access only", "Only instructor accounts can open the course studio.", "error");
-          originalShowView.call(this, state.authenticated ? "dashboard" : "home", { updateHash: false });
+          if (state.authenticated) {
+            originalShowView.call(this, "dashboard", Object.assign({}, arguments[1] || {}, { replace: true }));
+          }
           if (!state.authenticated) {
             handleBecomeInstructor();
           }
@@ -1123,6 +1180,9 @@
 
   function installOverrides() {
     document.addEventListener("submit", interceptAuthSubmit, true);
+    if (window.SkillForgeApp) {
+      window.SkillForgeApp.request = appApiRequest;
+    }
     window.startOAuth = handleOAuthBridge;
     window.saveInstructorCourseDraftBridge = persistInstructorCourse;
     window.uploadInstructorCourseAssetBridge = persistInstructorAsset;
@@ -1143,6 +1203,10 @@
     applyDashboardTab(localStorage.getItem("skillforge-dashboard-tab") || "overview");
     decorateAuthForm();
     await refreshAuthState();
+    const skillState = appState();
+    if (skillState && skillState.view === "instructor" && !isInstructorUser() && typeof window.showView === "function") {
+      window.showView(state.authenticated ? "dashboard" : "home", { replace: true });
+    }
   }
 
   if (document.readyState === "loading") {

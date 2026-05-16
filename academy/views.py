@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import re
+import uuid
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Iterable
@@ -16,6 +18,7 @@ from accounts.permissions import (
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.core import signing
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db.models import Q
@@ -176,6 +179,189 @@ def parse_request_data(request) -> dict[str, Any]:
     return {}
 
 
+NOTE_SIGNING_SALT = "skillforge.notebook.note.v1"
+
+
+def parse_seconds(value: Any, default: int = 0) -> int:
+    try:
+        return max(0, int(float(value or 0)))
+    except (TypeError, ValueError):
+        return default
+
+
+def format_media_clock(seconds: Any) -> str:
+    safe_seconds = parse_seconds(seconds)
+    minutes, secs = divmod(safe_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def is_uuid_like(value: Any) -> bool:
+    try:
+        uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def coerce_string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return []
+
+
+def protect_note_body(body: Any) -> str:
+    return signing.dumps({"body": str(body or "")}, salt=NOTE_SIGNING_SALT, compress=True)
+
+
+def unprotect_note_body(value: str) -> str:
+    if not value:
+        return ""
+    try:
+        payload = signing.loads(value, salt=NOTE_SIGNING_SALT)
+    except signing.BadSignature:
+        return value
+    return str(payload.get("body", ""))
+
+
+def note_body_preview(body: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", str(body or ""))
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:320]
+
+
+def lesson_for_course(course: models.Course, lesson_id: str | None):
+    lesson_id = str(lesson_id or "").strip()
+    if not lesson_id:
+        return None
+    lesson = lesson_by_key(lesson_id)
+    if not lesson or lesson.module.course_id != course.pk:
+        return None
+    return lesson
+
+
+def serialize_notebook_attachment(attachment: models.NotebookAttachment) -> dict[str, Any]:
+    return {
+        "id": str(attachment.pk),
+        "courseId": attachment.course.slug,
+        "noteId": str(attachment.note_id) if attachment.note_id else None,
+        "name": attachment.name,
+        "contentType": attachment.content_type,
+        "size": attachment.size,
+        "url": attachment.file.url if attachment.file else "",
+        "createdAt": isoformat_z(attachment.created_at),
+    }
+
+
+def serialize_note_version(version: models.NotebookNoteVersion) -> dict[str, Any]:
+    return {
+        "id": str(version.pk),
+        "version": version.version,
+        "title": version.title,
+        "body": unprotect_note_body(version.encrypted_body),
+        "bodyPreview": version.body_preview,
+        "category": version.category,
+        "tags": version.tags,
+        "timestamp": version.timestamp_seconds,
+        "metadata": version.metadata,
+        "createdAt": isoformat_z(version.created_at),
+    }
+
+
+def serialize_notebook_note(note: models.NotebookNote, *, include_history: bool = False) -> dict[str, Any]:
+    body = unprotect_note_body(note.encrypted_body)
+    payload = {
+        "id": str(note.pk),
+        "courseId": note.course.slug,
+        "lessonId": note.lesson.lesson_key if note.lesson else None,
+        "title": note.title,
+        "body": body,
+        "bodyPreview": note.body_preview,
+        "category": note.category,
+        "tags": note.tags,
+        "pinned": note.pinned,
+        "timestamp": note.timestamp_seconds,
+        "metadata": note.metadata,
+        "sharedWith": note.shared_with,
+        "version": note.version,
+        "isDeleted": note.is_deleted,
+        "createdAt": isoformat_z(note.created_at),
+        "updatedAt": isoformat_z(note.updated_at),
+        "lastSyncedAt": isoformat_z(note.last_synced_at),
+        "attachments": [serialize_notebook_attachment(item) for item in note.attachments.all()],
+    }
+    if include_history:
+        payload["history"] = [serialize_note_version(item) for item in note.versions.all()[:12]]
+    return payload
+
+
+def snapshot_note_version(note: models.NotebookNote) -> None:
+    models.NotebookNoteVersion.objects.create(
+        note=note,
+        version=note.version,
+        title=note.title,
+        encrypted_body=note.encrypted_body,
+        body_preview=note.body_preview,
+        category=note.category,
+        tags=note.tags,
+        timestamp_seconds=note.timestamp_seconds,
+        metadata=note.metadata,
+    )
+
+
+def serialize_question(question: models.LessonQuestion, completed_keys: set[str]) -> dict[str, Any]:
+    key = str(question.pk)
+    return {
+        "id": key,
+        "courseId": question.course.slug,
+        "lessonId": question.lesson.lesson_key if question.lesson else None,
+        "question": question.question,
+        "answer": question.answer,
+        "timestamp": question.timestamp_seconds,
+        "position": question.position,
+        "metadata": question.metadata,
+        "completed": key in completed_keys,
+        "source": "database",
+    }
+
+
+def metadata_questions_for_lesson(course: models.Course, lesson, completed_keys: set[str]) -> list[dict[str, Any]]:
+    raw_items = []
+    if lesson:
+        metadata = lesson.metadata if isinstance(lesson.metadata, dict) else {}
+        raw_items = metadata.get("questions") or metadata.get("questionNav") or metadata.get("checkpoints") or []
+    if not raw_items and isinstance(course.qa, list):
+        raw_items = course.qa
+    items: list[dict[str, Any]] = []
+    for index, raw in enumerate(raw_items if isinstance(raw_items, list) else [], start=1):
+        if not isinstance(raw, dict):
+            continue
+        question_text = str(raw.get("question") or raw.get("prompt") or raw.get("title") or "").strip()
+        if not question_text:
+            continue
+        timestamp = parse_seconds(raw.get("timestamp", raw.get("timestampSeconds", raw.get("time", index * 45))))
+        key = str(raw.get("id") or f"metadata:{lesson.lesson_key if lesson else course.slug}:{index}")
+        items.append(
+            {
+                "id": key,
+                "courseId": course.slug,
+                "lessonId": lesson.lesson_key if lesson else None,
+                "question": question_text,
+                "answer": str(raw.get("answer") or raw.get("hint") or "").strip(),
+                "timestamp": timestamp,
+                "position": index,
+                "metadata": raw,
+                "completed": key in completed_keys,
+                "source": "metadata",
+            }
+        )
+    return items
+
+
 def index(request):
     if request.method not in {"GET", "HEAD"}:
         return error_response("Method not allowed", 405)
@@ -183,7 +369,11 @@ def index(request):
     html = INDEX_PATH.read_text(encoding="utf-8")
     script_tag = '<script src="/frontend-auth.js"></script>'
     if script_tag not in html:
-        html = html.replace("</body>", f"{script_tag}\n</body>")
+        body_close_index = html.lower().rfind("</body>")
+        if body_close_index >= 0:
+            html = f"{html[:body_close_index]}{script_tag}\n{html[body_close_index:]}"
+        else:
+            html = f"{html}\n{script_tag}\n"
     response = HttpResponse(html, content_type="text/html; charset=utf-8")
     return add_cors_headers(response)
 
@@ -347,6 +537,81 @@ def course_list(request):
         )
     courses = [serialize_course(course) for course in queryset]
     return json_response({"ok": True, "count": len(courses), "courses": courses})
+
+
+@csrf_exempt
+def course_content_search(request):
+    if response := guard_method(request, {"GET"}):
+        return response
+    ensure_seeded()
+    course_id = str(request.GET.get("courseId", "")).strip()
+    query = str(request.GET.get("q", "")).strip()
+    if not course_id:
+        return error_response("courseId query parameter is required.", 400)
+    course = course_by_slug_or_404(course_id)
+    if not course:
+        return error_response("Course not found", 404)
+    user, email, _session = resolve_actor(request, query=request.GET.dict())
+    if not query:
+        return json_response({"ok": True, "courseId": course.slug, "query": query, "count": 0, "results": []})
+
+    lesson_queryset = (
+        models.CourseLesson.objects.filter(module__course=course, is_published=True)
+        .select_related("module")
+        .filter(Q(title__icontains=query) | Q(summary__icontains=query) | Q(content_type__icontains=query))
+    )
+    results: list[dict[str, Any]] = [
+        {
+            "kind": "lesson",
+            "type": lesson.content_type,
+            "id": lesson.lesson_key,
+            "courseId": course.slug,
+            "lessonId": lesson.lesson_key,
+            "title": lesson.title,
+            "subtitle": f"{lesson.module.title} - {lesson.duration_label or 'Self-paced'}",
+            "timestamp": 0,
+        }
+        for lesson in lesson_queryset[:20]
+    ]
+
+    question_queryset = (
+        models.LessonQuestion.objects.filter(course=course, is_published=True)
+        .select_related("lesson")
+        .filter(Q(question__icontains=query) | Q(answer__icontains=query))
+    )
+    results.extend(
+        {
+            "kind": "question",
+            "id": str(question.pk),
+            "questionId": str(question.pk),
+            "courseId": course.slug,
+            "lessonId": question.lesson.lesson_key if question.lesson else "",
+            "title": question.question,
+            "subtitle": f"{question.lesson.title if question.lesson else course.title} - {format_media_clock(question.timestamp_seconds)}",
+            "timestamp": question.timestamp_seconds,
+        }
+        for question in question_queryset[:20]
+    )
+
+    note_queryset = (
+        models.NotebookNote.objects.filter(email=email, course=course, is_deleted=False)
+        .select_related("lesson")
+        .filter(Q(title__icontains=query) | Q(body_preview__icontains=query) | Q(category__icontains=query))
+    )
+    results.extend(
+        {
+            "kind": "note",
+            "id": str(note.pk),
+            "courseId": course.slug,
+            "lessonId": note.lesson.lesson_key if note.lesson else "",
+            "title": note.title or "Untitled note",
+            "subtitle": f"Notebook - {note.category or 'General'}",
+            "timestamp": note.timestamp_seconds,
+        }
+        for note in note_queryset[:20]
+    )
+
+    return json_response({"ok": True, "courseId": course.slug, "query": query, "count": len(results), "results": results[:40]})
 
 
 @csrf_exempt
@@ -1321,6 +1586,361 @@ def coupon_validate(request):
 
 
 @csrf_exempt
+def lesson_questions(request):
+    if response := guard_method(request, {"GET", "POST"}):
+        return response
+    ensure_seeded()
+    if request.method == "POST":
+        data = parse_request_data(request)
+        user, _email, _session = resolve_actor(request, data=data)
+        if access_error := require_instructor_access(user):
+            return access_error
+        action = str(data.get("action", "save")).strip().lower()
+        question_id = str(data.get("id") or data.get("questionId") or "").strip()
+        if action == "delete":
+            if not question_id:
+                return error_response("questionId is required.", 400)
+            question = models.LessonQuestion.objects.select_related("course").filter(pk=question_id).first()
+            if not question:
+                return error_response("Question not found.", 404)
+            if owner_error := require_course_owner_access(user, question.course):
+                return owner_error
+            question.delete()
+            return json_response({"ok": True, "deleted": True, "questionId": question_id})
+
+        course_id = str(data.get("courseId", "")).strip()
+        lesson_id = str(data.get("lessonId", "")).strip()
+        question_text = str(data.get("question", "")).strip()
+        if not course_id:
+            return error_response("courseId is required.", 400)
+        if not question_text:
+            return error_response("question is required.", 400)
+        course = course_by_slug_or_404(course_id)
+        if not course:
+            return error_response("Course not found", 404)
+        if owner_error := require_course_owner_access(user, course):
+            return owner_error
+        lesson = lesson_for_course(course, lesson_id)
+        if lesson_id and not lesson:
+            return error_response("Lesson not found for this course.", 404)
+        if question_id:
+            question = models.LessonQuestion.objects.filter(pk=question_id, course=course).first()
+            if not question:
+                return error_response("Question not found.", 404)
+        else:
+            question = models.LessonQuestion(course=course)
+        question.lesson = lesson
+        question.question = question_text
+        question.answer = str(data.get("answer", "")).strip()
+        question.timestamp_seconds = parse_seconds(data.get("timestamp", data.get("timestampSeconds", 0)))
+        question.position = parse_seconds(data.get("position", question.position or 1), default=1) or 1
+        question.is_published = str(data.get("isPublished", data.get("published", True))).lower() != "false"
+        if isinstance(data.get("metadata"), dict):
+            question.metadata = data["metadata"]
+        question.save()
+        return json_response({"ok": True, "question": serialize_question(question, set())}, status=201 if not question_id else 200)
+
+    course_id = str(request.GET.get("courseId", "")).strip()
+    lesson_id = str(request.GET.get("lessonId", "")).strip()
+    if not course_id:
+        return error_response("courseId query parameter is required.", 400)
+    course = course_by_slug_or_404(course_id)
+    if not course:
+        return error_response("Course not found", 404)
+    lesson = lesson_for_course(course, lesson_id)
+    if lesson_id and not lesson:
+        return error_response("Lesson not found for this course.", 404)
+    user, email, _session = resolve_actor(request, query=request.GET.dict())
+    completions = models.QuestionCompletion.objects.filter(email=email, course=course, completed=True)
+    if lesson:
+        completions = completions.filter(Q(lesson=lesson) | Q(lesson__isnull=True))
+    completed_keys = set(completions.values_list("question_key", flat=True))
+    queryset = models.LessonQuestion.objects.select_related("course", "lesson").filter(course=course, is_published=True)
+    if lesson:
+        queryset = queryset.filter(Q(lesson=lesson) | Q(lesson__isnull=True))
+    questions = [serialize_question(item, completed_keys) for item in queryset]
+    seen_ids = {item["id"] for item in questions}
+    questions.extend(item for item in metadata_questions_for_lesson(course, lesson, completed_keys) if item["id"] not in seen_ids)
+    questions.sort(key=lambda item: (parse_seconds(item.get("timestamp")), parse_seconds(item.get("position"))))
+    return json_response({"ok": True, "courseId": course.slug, "lessonId": lesson.lesson_key if lesson else None, "count": len(questions), "questions": questions})
+
+
+@csrf_exempt
+def question_completion(request):
+    if response := guard_method(request, {"POST"}):
+        return response
+    ensure_seeded()
+    data = parse_request_data(request)
+    user, email, _session = resolve_actor(request, data=data)
+    if access_error := require_authenticated_access(user):
+        return access_error
+    course_id = str(data.get("courseId", "")).strip()
+    question_key = str(data.get("questionId") or data.get("questionKey") or "").strip()
+    if not course_id or not question_key:
+        return error_response("courseId and questionId are required.", 400)
+    course = course_by_slug_or_404(course_id)
+    if not course:
+        return error_response("Course not found", 404)
+    lesson = lesson_for_course(course, str(data.get("lessonId", "")).strip())
+    question = None
+    try:
+        question = models.LessonQuestion.objects.filter(pk=question_key, course=course).first()
+    except (ValidationError, ValueError):
+        question = None
+    completed = data.get("completed")
+    completed = completed if isinstance(completed, bool) else str(completed).lower() != "false"
+    item, _created = models.QuestionCompletion.objects.update_or_create(
+        email=email,
+        course=course,
+        question_key=question_key,
+        defaults={
+            "user": user,
+            "lesson": lesson or (question.lesson if question else None),
+            "question": question,
+            "completed": completed,
+            "completed_at": now() if completed else None,
+        },
+    )
+    return json_response(
+        {
+            "ok": True,
+            "completion": {
+                "id": str(item.pk),
+                "courseId": course.slug,
+                "lessonId": item.lesson.lesson_key if item.lesson else None,
+                "questionId": item.question_key,
+                "completed": item.completed,
+                "completedAt": isoformat_z(item.completed_at),
+            },
+        }
+    )
+
+
+@csrf_exempt
+def notebook_notes(request):
+    if response := guard_method(request, {"GET", "POST"}):
+        return response
+    ensure_seeded()
+    if request.method == "GET":
+        user, email, _session = resolve_actor(request, query=request.GET.dict())
+        if access_error := require_authenticated_access(user):
+            return access_error
+        course_id = str(request.GET.get("courseId", "")).strip()
+        if not course_id:
+            return error_response("courseId query parameter is required.", 400)
+        course = course_by_slug_or_404(course_id)
+        if not course:
+            return error_response("Course not found", 404)
+        lesson_id = str(request.GET.get("lessonId", "")).strip()
+        include_deleted = str(request.GET.get("includeDeleted", "")).lower() in {"1", "true", "yes"}
+        query = str(request.GET.get("q", "")).strip()
+        queryset = (
+            models.NotebookNote.objects.filter(email=email, course=course)
+            .select_related("course", "lesson")
+            .prefetch_related("attachments", "versions")
+        )
+        if not include_deleted:
+            queryset = queryset.filter(is_deleted=False)
+        if lesson_id:
+            queryset = queryset.filter(lesson__lesson_key=lesson_id)
+        if query:
+            queryset = queryset.filter(Q(title__icontains=query) | Q(body_preview__icontains=query) | Q(category__icontains=query))
+        notes = [serialize_notebook_note(item, include_history=True) for item in queryset]
+        return json_response({"ok": True, "courseId": course.slug, "count": len(notes), "notes": notes})
+
+    data = parse_request_data(request)
+    user, email, _session = resolve_actor(request, data=data)
+    if access_error := require_authenticated_access(user):
+        return access_error
+    note_data = data.get("note") if isinstance(data.get("note"), dict) else data
+    action = str(data.get("action") or note_data.get("action") or "save").strip().lower()
+    note_id = str(note_data.get("id") or data.get("noteId") or "").strip()
+    client_note_id = note_id
+    if note_id and not is_uuid_like(note_id):
+        note_id = ""
+
+    if action == "delete":
+        if not note_id:
+            if client_note_id:
+                return json_response({"ok": True, "deleted": True, "noteId": client_note_id})
+            return error_response("noteId is required.", 400)
+        note = models.NotebookNote.objects.filter(pk=note_id, email=email).first()
+        if not note:
+            return error_response("Note not found.", 404)
+        note.is_deleted = True
+        note.deleted_at = now()
+        note.last_synced_at = now()
+        note.save(update_fields=["is_deleted", "deleted_at", "last_synced_at", "updated_at"])
+        return json_response({"ok": True, "deleted": True, "note": serialize_notebook_note(note, include_history=True)})
+
+    if action == "restore_version":
+        version_id = str(data.get("versionId") or note_data.get("versionId") or "").strip()
+        version = models.NotebookNoteVersion.objects.select_related("note", "note__course", "note__lesson").filter(pk=version_id, note__email=email).first()
+        if not version:
+            return error_response("Note version not found.", 404)
+        note = version.note
+        snapshot_note_version(note)
+        note.title = version.title
+        note.encrypted_body = version.encrypted_body
+        note.body_preview = version.body_preview
+        note.category = version.category
+        note.tags = version.tags
+        note.timestamp_seconds = version.timestamp_seconds
+        note.metadata = version.metadata
+        note.version += 1
+        note.is_deleted = False
+        note.deleted_at = None
+        note.last_synced_at = now()
+        note.save()
+        return json_response({"ok": True, "note": serialize_notebook_note(note, include_history=True)})
+
+    course_id = str(note_data.get("courseId", "")).strip()
+    if not course_id and note_id:
+        existing_note = models.NotebookNote.objects.filter(pk=note_id, email=email).select_related("course").first()
+        course_id = existing_note.course.slug if existing_note else ""
+    if not course_id:
+        return error_response("courseId is required.", 400)
+    course = course_by_slug_or_404(course_id)
+    if not course:
+        return error_response("Course not found", 404)
+    lesson = lesson_for_course(course, str(note_data.get("lessonId", "")).strip())
+    if note_data.get("lessonId") and not lesson:
+        return error_response("Lesson not found for this course.", 404)
+    body = str(note_data.get("body", note_data.get("html", note_data.get("content", ""))) or "")
+    title = str(note_data.get("title") or note_body_preview(body)[:80] or "Untitled note").strip()
+    if note_id:
+        note = models.NotebookNote.objects.filter(pk=note_id, email=email, course=course).first()
+        if not note:
+            return error_response("Note not found.", 404)
+        snapshot_note_version(note)
+        note.version += 1
+    else:
+        note = models.NotebookNote(email=email, user=user, course=course, version=1)
+    note.user = user
+    note.email = email
+    note.course = course
+    note.lesson = lesson
+    note.title = title[:255]
+    note.encrypted_body = protect_note_body(body)
+    note.body_preview = note_body_preview(body)
+    note.category = str(note_data.get("category") or "General").strip()[:120] or "General"
+    note.tags = coerce_string_list(note_data.get("tags"))
+    note.pinned = bool(note_data.get("pinned", False))
+    note.timestamp_seconds = parse_seconds(note_data.get("timestamp", note_data.get("timestampSeconds", 0)))
+    note.metadata = note_data.get("metadata") if isinstance(note_data.get("metadata"), dict) else {}
+    note.shared_with = coerce_string_list(note_data.get("sharedWith", note_data.get("shared_with", [])))
+    note.is_deleted = False
+    note.deleted_at = None
+    note.last_synced_at = now()
+    note.save()
+    return json_response({"ok": True, "note": serialize_notebook_note(note, include_history=True)}, status=201 if not note_id else 200)
+
+
+@csrf_exempt
+def notebook_attachments(request):
+    if response := guard_method(request, {"POST"}):
+        return response
+    ensure_seeded()
+    user, email, _session = resolve_actor(request, data=request.POST.dict())
+    if access_error := require_authenticated_access(user):
+        return access_error
+    course_id = str(request.POST.get("courseId", "")).strip()
+    if not course_id:
+        return error_response("courseId is required.", 400)
+    course = course_by_slug_or_404(course_id)
+    if not course:
+        return error_response("Course not found", 404)
+    note = None
+    note_id = str(request.POST.get("noteId", "")).strip()
+    if note_id:
+        if not is_uuid_like(note_id):
+            note = None
+        else:
+            note = models.NotebookNote.objects.filter(pk=note_id, email=email, course=course).first()
+        if not note:
+            note = None
+    upload = request.FILES.get("file")
+    if not upload:
+        return error_response("file is required.", 400)
+    attachment = models.NotebookAttachment.objects.create(
+        user=user,
+        email=email,
+        course=course,
+        note=note,
+        file=upload,
+        name=upload.name,
+        content_type=getattr(upload, "content_type", "") or "",
+        size=upload.size,
+    )
+    return json_response({"ok": True, "attachment": serialize_notebook_attachment(attachment)}, status=201)
+
+
+@csrf_exempt
+def assignments(request):
+    if response := guard_method(request, {"GET", "POST"}):
+        return response
+    ensure_seeded()
+    if request.method == "GET":
+        user, email, _session = resolve_actor(request, query=request.GET.dict())
+        if access_error := require_authenticated_access(user):
+            return access_error
+        course_id = str(request.GET.get("courseId", "")).strip()
+        queryset = models.AssignmentSubmission.objects.select_related("course", "lesson", "lesson__module")
+        if can_manage_instructor_content(user):
+            if course_id:
+                queryset = queryset.filter(course__slug=course_id)
+            elif not can_access_admin_dashboard(user):
+                queryset = queryset.filter(course__created_by=user)
+        else:
+            queryset = queryset.filter(email=email)
+            if course_id:
+                queryset = queryset.filter(course__slug=course_id)
+        submissions = [
+            {
+                "id": str(item.pk),
+                "courseId": item.course.slug,
+                "courseTitle": item.course.title,
+                "lessonId": item.lesson.lesson_key,
+                "lessonTitle": item.lesson.title,
+                "email": item.email,
+                "response": item.response,
+                "status": item.status,
+                "grade": item.grade,
+                "feedback": item.feedback,
+                "updatedAt": isoformat_z(item.updated_at),
+            }
+            for item in queryset
+        ]
+        return json_response({"ok": True, "count": len(submissions), "submissions": submissions})
+
+    data = parse_request_data(request)
+    user, email, _session = resolve_actor(request, data=data)
+    if access_error := require_authenticated_access(user):
+        return access_error
+    course_id = str(data.get("courseId", "")).strip()
+    lesson_id = str(data.get("lessonId", "")).strip()
+    if not course_id or not lesson_id:
+        return error_response("courseId and lessonId are required.", 400)
+    course = course_by_slug_or_404(course_id)
+    if not course:
+        return error_response("Course not found", 404)
+    lesson = lesson_for_course(course, lesson_id)
+    if not lesson:
+        return error_response("Lesson not found for this course.", 404)
+    submission, _created = models.AssignmentSubmission.objects.update_or_create(
+        email=email,
+        lesson=lesson,
+        defaults={
+            "user": user,
+            "course": course,
+            "response": str(data.get("response", "")),
+            "status": str(data.get("status", "draft")).strip() or "draft",
+        },
+    )
+    return json_response({"ok": True, "submissionId": str(submission.pk), "status": submission.status, "updatedAt": isoformat_z(submission.updated_at)})
+
+
+@csrf_exempt
 def notes(request):
     if response := guard_method(request, {"GET", "POST"}):
         return response
@@ -1354,8 +1974,37 @@ def notes(request):
 
 @csrf_exempt
 def notifications(request):
-    if response := guard_method(request, {"GET"}):
+    if response := guard_method(request, {"GET", "POST"}):
         return response
+    if request.method == "POST":
+        data = parse_request_data(request)
+        user, email, _session = resolve_actor(request, data=data)
+        if access_error := require_instructor_access(user):
+            return access_error
+        audience = str(data.get("audience", data.get("audienceEmail", "all"))).strip()
+        title = str(data.get("title", "")).strip()
+        message = str(data.get("message", "")).strip()
+        if not title or not message:
+            return error_response("title and message are required.", 400)
+        notification = models.PlatformNotification.objects.create(
+            audience_scope=models.PlatformNotification.SCOPE_ALL if audience == "all" else models.PlatformNotification.SCOPE_EMAIL,
+            audience_email="" if audience == "all" else normalize_email(audience),
+            title=title,
+            message=message,
+        )
+        return json_response(
+            {
+                "ok": True,
+                "notification": {
+                    "id": str(notification.pk),
+                    "audience": audience or email,
+                    "title": notification.title,
+                    "message": notification.message,
+                    "createdAt": isoformat_z(notification.created_at),
+                },
+            },
+            status=201,
+        )
     user, email, _session = resolve_actor(request, query=request.GET.dict())
     items = active_notifications_for(email, user=user)
     return json_response({"ok": True, "email": email, "count": items.count(), "notifications": [{"id": str(item.pk), "audience": item.audience_scope if item.audience_scope == models.PlatformNotification.SCOPE_ALL else (item.audience_email or email), "title": item.title, "message": item.message, "createdAt": isoformat_z(item.created_at)} for item in items]})

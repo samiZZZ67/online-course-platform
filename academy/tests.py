@@ -825,6 +825,148 @@ class SkillForgeApiTests(TestCase):
         self.assertEqual(ai_response.status_code, 200)
         self.assertIn("Start by defining one job", ai_response.json()["reply"])
 
+    def test_lesson_questions_load_and_completion_persists(self):
+        User = get_user_model()
+        instructor = User.objects.create_user(email="question-author@example.com", password="strongpass1", role="instructor")
+        student = User.objects.create_user(email="question-student@example.com", password="strongpass1", role="student")
+        course = models.Course.objects.get(slug="claude-ai-engineering")
+        lesson = models.CourseLesson.objects.filter(module__course=course).first()
+        course.created_by = instructor
+        course.save(update_fields=["created_by", "updated_at"])
+
+        self.client.force_login(instructor)
+        create_response = self.client.post(
+            "/api/questions",
+            data=json.dumps(
+                {
+                    "courseId": course.slug,
+                    "lessonId": lesson.lesson_key,
+                    "question": "What should happen at this timestamp?",
+                    "answer": "The player should jump here.",
+                    "timestamp": 532,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        question_id = create_response.json()["question"]["id"]
+
+        self.client.force_login(student)
+        list_response = self.client.get(f"/api/questions?courseId={course.slug}&lessonId={lesson.lesson_key}")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertTrue(any(item["id"] == question_id for item in list_response.json()["questions"]))
+
+        completion_response = self.client.post(
+            "/api/questions/completion",
+            data=json.dumps({"courseId": course.slug, "lessonId": lesson.lesson_key, "questionId": question_id, "completed": True}),
+            content_type="application/json",
+        )
+        self.assertEqual(completion_response.status_code, 200)
+        self.assertTrue(completion_response.json()["completion"]["completed"])
+
+        self.client.force_login(instructor)
+        delete_response = self.client.post(
+            "/api/questions",
+            data=json.dumps({"action": "delete", "courseId": course.slug, "lessonId": lesson.lesson_key, "questionId": question_id}),
+            content_type="application/json",
+        )
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertTrue(delete_response.json()["deleted"])
+
+        self.client.force_login(student)
+        deleted_list_response = self.client.get(f"/api/questions?courseId={course.slug}&lessonId={lesson.lesson_key}")
+        self.assertEqual(deleted_list_response.status_code, 200)
+        self.assertFalse(any(item["id"] == question_id for item in deleted_list_response.json()["questions"]))
+
+    def test_course_content_search_is_scoped_to_selected_course(self):
+        course = models.Course.objects.get(slug="claude-ai-engineering")
+        other_course = models.Course.objects.exclude(pk=course.pk).first()
+        lesson = models.CourseLesson.objects.filter(module__course=course).first()
+        other_lesson = models.CourseLesson.objects.filter(module__course=other_course).first()
+        models.LessonQuestion.objects.create(
+            course=course,
+            lesson=lesson,
+            question="Scoped search marker for this course",
+            timestamp_seconds=45,
+        )
+        models.LessonQuestion.objects.create(
+            course=other_course,
+            lesson=other_lesson,
+            question="Scoped search marker from another course",
+            timestamp_seconds=90,
+        )
+
+        response = self.client.get(f"/api/courses/search?courseId={course.slug}&q=Scoped search marker")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["courseId"], course.slug)
+        self.assertTrue(any(item["title"] == "Scoped search marker for this course" for item in payload["results"]))
+        self.assertFalse(any(item["title"] == "Scoped search marker from another course" for item in payload["results"]))
+        self.assertTrue(all(item["courseId"] == course.slug for item in payload["results"]))
+
+        other_response = self.client.get(f"/api/courses/search?courseId={other_course.slug}&q=Scoped search marker")
+        self.assertEqual(other_response.status_code, 200)
+        other_payload = other_response.json()
+        self.assertEqual(other_payload["courseId"], other_course.slug)
+        self.assertTrue(any(item["title"] == "Scoped search marker from another course" for item in other_payload["results"]))
+        self.assertFalse(any(item["title"] == "Scoped search marker for this course" for item in other_payload["results"]))
+        self.assertTrue(all(item["courseId"] == other_course.slug for item in other_payload["results"]))
+
+    def test_notebook_notes_are_private_and_versioned(self):
+        User = get_user_model()
+        student = User.objects.create_user(email="notebook-student@example.com", password="strongpass1", role="student")
+        course = models.Course.objects.get(slug="claude-ai-engineering")
+        lesson = models.CourseLesson.objects.filter(module__course=course).first()
+        self.client.force_login(student)
+
+        create_response = self.client.post(
+            "/api/notebook/notes",
+            data=json.dumps(
+                {
+                    "note": {
+                        "courseId": course.slug,
+                        "lessonId": lesson.lesson_key,
+                        "title": "React Hooks",
+                        "body": "<p>Important concept</p>",
+                        "timestamp": 532,
+                        "category": "React",
+                        "tags": ["hooks", "state"],
+                    }
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        note = create_response.json()["note"]
+        self.assertEqual(note["body"], "<p>Important concept</p>")
+        self.assertEqual(note["timestamp"], 532)
+
+        update_response = self.client.post(
+            "/api/notebook/notes",
+            data=json.dumps(
+                {
+                    "note": {
+                        "id": note["id"],
+                        "courseId": course.slug,
+                        "lessonId": lesson.lesson_key,
+                        "title": "React Hooks Updated",
+                        "body": "<p>Updated concept</p>",
+                        "timestamp": 540,
+                        "category": "React",
+                    }
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(update_response.status_code, 200)
+        updated = update_response.json()["note"]
+        self.assertEqual(updated["version"], 2)
+        self.assertGreaterEqual(len(updated["history"]), 1)
+
+        list_response = self.client.get(f"/api/notebook/notes?courseId={course.slug}&q=Updated")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(list_response.json()["count"], 1)
+
     def test_course_categories_and_structured_course_data_are_available(self):
         categories_response = self.client.get("/api/categories")
         self.assertEqual(categories_response.status_code, 200)
