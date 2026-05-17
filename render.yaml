@@ -1,0 +1,31 @@
+databases:
+  - name: skillforge-db
+    plan: free
+    databaseName: skillforge
+    user: skillforge
+
+services:
+  - type: web
+    name: skillforge
+    runtime: python
+    plan: free
+    buildCommand: bash build.sh
+    startCommand: python -m gunicorn backend.asgi:application -k uvicorn.workers.UvicornWorker
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: skillforge-db
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: WEB_CONCURRENCY
+        value: 4

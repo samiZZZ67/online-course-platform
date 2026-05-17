@@ -556,35 +556,36 @@ def seed_database(force: bool = False) -> None:
             },
         )
 
-    demo = seed.get("users", [{}])[0]
-    demo_email = normalize_email(demo.get("email") or "demo@skillforge.local")
-    demo_user, created = User.objects.get_or_create(
-        email=demo_email,
-        defaults={
-            "email": demo_email,
-            "username": "demo_learner",
-            "first_name": demo.get("firstName", "Demo"),
-            "last_name": demo.get("lastName", "Learner"),
-            "role": "student",
-            "status": "active",
-            "is_email_verified": True,
-        },
-    )
-    if created or force:
-        demo_user.email = demo_email
-        demo_user.username = demo_user.username or "demo_learner"
-        demo_user.first_name = demo.get("firstName", "Demo")
-        demo_user.last_name = demo.get("lastName", "Learner")
-        if hasattr(demo_user, "role"):
-            demo_user.role = "student"
-        if hasattr(demo_user, "status"):
-            demo_user.status = "active"
-        if hasattr(demo_user, "is_email_verified"):
-            demo_user.is_email_verified = True
-        if hasattr(demo_user, "email_verified_at") and not demo_user.email_verified_at:
-            demo_user.email_verified_at = now()
-        demo_user.set_password("skillforge123")
-        demo_user.save()
+    if getattr(settings, "SEED_DEMO_USER", settings.DEBUG):
+        demo = seed.get("users", [{}])[0]
+        demo_email = normalize_email(demo.get("email") or "demo@skillforge.local")
+        demo_user, created = User.objects.get_or_create(
+            email=demo_email,
+            defaults={
+                "email": demo_email,
+                "username": "demo_learner",
+                "first_name": demo.get("firstName", "Demo"),
+                "last_name": demo.get("lastName", "Learner"),
+                "role": "student",
+                "status": "active",
+                "is_email_verified": True,
+            },
+        )
+        if created or force:
+            demo_user.email = demo_email
+            demo_user.username = demo_user.username or "demo_learner"
+            demo_user.first_name = demo.get("firstName", "Demo")
+            demo_user.last_name = demo.get("lastName", "Learner")
+            if hasattr(demo_user, "role"):
+                demo_user.role = "student"
+            if hasattr(demo_user, "status"):
+                demo_user.status = "active"
+            if hasattr(demo_user, "is_email_verified"):
+                demo_user.is_email_verified = True
+            if hasattr(demo_user, "email_verified_at") and not demo_user.email_verified_at:
+                demo_user.email_verified_at = now()
+            demo_user.set_password("skillforge123")
+            demo_user.save()
 
     seed_course_ids = set()
     for raw_course in seed.get("courses", {}).get("base", []):

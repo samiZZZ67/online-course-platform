@@ -2,3 +2,7 @@ Django==5.2.13
 djangorestframework==3.16.1
 drf-spectacular==0.29.0
 PyJWT==2.12.1
+gunicorn>=23,<24
+uvicorn[standard]>=0.35,<1
+whitenoise[brotli]>=6.9,<7
+psycopg[binary]>=3.2,<4

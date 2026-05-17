@@ -59,6 +59,51 @@ The final authentication flow checklist is documented in `docs/final-authenticat
 python manage.py test
 ```
 
+## Deploy On Render
+
+This repo includes `render.yaml`, `build.sh`, `Procfile`, and production-ready Django settings for Render.
+
+Fast path:
+
+1. Push this repository to GitHub.
+2. In Render, create a new Blueprint from the repo. Render will read `render.yaml`.
+3. Add `GROQ_API_KEY` when Render asks for unsynced environment variables.
+4. Deploy.
+
+Manual web service settings, if you do not use the Blueprint:
+
+```bash
+Build Command: bash build.sh
+Start Command: python -m gunicorn backend.asgi:application -k uvicorn.workers.UvicornWorker
+```
+
+Required production environment variables:
+
+```bash
+SECRET_KEY=<generate a long random value>
+DEBUG=false
+DATABASE_URL=<Render Postgres internal connection string>
+GROQ_API_KEY=<your Groq key>
+GROQ_MODEL=llama-3.3-70b-versatile
+```
+
+Production deploys do not create the local demo learner account unless you set `SEED_DEMO_USER=true`.
+
+Render sets `RENDER_EXTERNAL_HOSTNAME`, so the default Render URL is allowed automatically. For a custom domain, set:
+
+```bash
+ALLOWED_HOSTS=your-domain.com
+CSRF_TRUSTED_ORIGINS=https://your-domain.com
+```
+
+`build.sh` installs dependencies, collects static files, runs migrations, and loads starter SkillForge data.
+
+Course uploads and user media need persistent storage. Add a Render Disk or external file storage before relying on uploads in production; otherwise files written to the Render instance can disappear after deploys/restarts. With a Render Disk mounted at `/var/data`, set:
+
+```bash
+MEDIA_ROOT=/var/data/media
+```
+
 ## Seed Data
 
 ```bash
