@@ -28,6 +28,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from . import models
 from .catalog import build_tutor_reply
+from .groq_client import GroqAPIError, GroqConfigurationError, ask_groq_tutor
 from .services import (
     AuthTokenError,
     RateLimitExceeded,
@@ -1508,16 +1509,39 @@ def ai_tutor(request):
         return error_response("prompt is required.", 400)
     course = course_by_slug_or_404(str(data.get("courseId", "")).strip()) if data.get("courseId") else None
     user, email, _session = resolve_actor(request, data=data)
-    reply = build_tutor_reply(prompt, serialize_course(course) if course else None)
+    lesson_id = str(data.get("lessonId", "") or "")
+    course_payload = serialize_course(course) if course else None
+    provider = "local"
+    model = None
+    try:
+        groq_result = ask_groq_tutor(prompt, course=course_payload, lesson_id=lesson_id)
+        reply = groq_result.reply
+        provider = groq_result.provider
+        model = groq_result.model
+    except GroqConfigurationError:
+        reply = build_tutor_reply(prompt, course_payload)
+    except GroqAPIError as exc:
+        if not getattr(settings, "GROQ_USE_LOCAL_FALLBACK", True):
+            return error_response(str(exc), 502)
+        reply = build_tutor_reply(prompt, course_payload)
     models.AIPromptLog.objects.create(
         user=user,
         email=email,
         course=course,
-        lesson_id=str(data.get("lessonId", "") or ""),
+        lesson_id=lesson_id,
         prompt=prompt,
         reply=reply,
     )
-    return json_response({"ok": True, "reply": reply, "courseId": course.slug if course else None, "lessonId": data.get("lessonId")})
+    return json_response(
+        {
+            "ok": True,
+            "reply": reply,
+            "provider": provider,
+            "model": model,
+            "courseId": course.slug if course else None,
+            "lessonId": data.get("lessonId"),
+        }
+    )
 
 
 @csrf_exempt

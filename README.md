@@ -24,6 +24,29 @@ Then open `http://localhost:3000/`. The Django server will:
 The root dispatcher lives in `backend/urls.py`, while the actual site and API routes live in `academy/urls.py`.
 The domain models, admin registrations, tests, static assets, and seed logic now live in the `academy` app.
 
+## Groq AI Tutor
+
+`POST /api/ai/tutor` calls Groq when `GROQ_API_KEY` is configured. Without a key, local development keeps using the built-in fallback tutor reply.
+
+Set these environment variables before running the server:
+
+```bash
+GROQ_API_KEY=your_groq_api_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
+```
+
+PowerShell example:
+
+```powershell
+$env:GROQ_API_KEY="your_groq_api_key_here"
+$env:GROQ_MODEL="llama-3.3-70b-versatile"
+python manage.py runserver 3000
+```
+
+Optional settings are listed in `.env.example`: API base URL, timeout, max completion tokens, temperature, and whether failed Groq calls should fall back locally.
+
+You can also copy `.env.example` to `.env`, put your real key there, and restart the Django server.
+
 Authentication design for the next implementation step is documented in `docs/authentication-architecture.md`.
 The custom user model design is documented in `docs/custom-user-model.md`.
 The role-based access control design is documented in `docs/rbac-architecture.md`.

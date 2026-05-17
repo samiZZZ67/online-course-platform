@@ -24,7 +24,7 @@
   --text: #EEF0F7;
   --text2: #9499AF;
   --text3: #5A5F7A;
-  --success: #22C55E;
+  --success: #22C55E;    
   --danger: #EF4444;
   --radius: 12px;
   --radius-sm: 8px;
@@ -5454,6 +5454,7 @@ function syncPdfFullscreenState(){
 }
 
 function buildTutorReply(prompt,course){
+  course=course||getSelectedCourse();
   const normalized=prompt.toLowerCase();
   if(normalized.includes('api')||normalized.includes('tool')||normalized.includes('automation')){
     return 'Start by defining one job, one input shape, one output shape, and one clear failure path. That keeps the first backend integration simple and production-safe.';
@@ -5467,6 +5468,14 @@ function buildTutorReply(prompt,course){
   return `Focus on the next concrete step inside ${course.track.toLowerCase()}: finish the current lesson, practice one repeatable workflow, and write down what you would automate or improve next.`;
 }
 
+function resolveTutorReply(result,prompt,course){
+  const backendReply=result?.data?.reply;
+  if(result?.ok&&typeof backendReply==='string'&&backendReply.trim()){
+    return backendReply.trim();
+  }
+  return buildTutorReply(prompt,course);
+}
+
 async function submitPlayerAiPrompt(event){
   event.preventDefault();
   const input=event.currentTarget.querySelector('input');
@@ -5476,9 +5485,11 @@ async function submitPlayerAiPrompt(event){
   const thread=getPlayerThread(course);
   thread.push({role:'user',text:prompt});
   input.value='';
+  const pendingMessage={role:'bot',text:'Thinking...'};
+  thread.push(pendingMessage);
   renderPlayer();
-  await APP.request('ai.player.prompt',{courseId:course.id,lessonId:APP.state.selectedLessonId,prompt},APP.config.endpoints.aiTutor);
-  thread.push({role:'bot',text:buildTutorReply(prompt,course)});
+  const result=await APP.request('ai.player.prompt',{courseId:course.id,lessonId:APP.state.selectedLessonId,prompt},APP.config.endpoints.aiTutor);
+  pendingMessage.text=resolveTutorReply(result,prompt,course);
   renderPlayer();
 }
 
@@ -6583,9 +6594,11 @@ async function submitHomeAiPrompt(){
   if(!prompt) return;
   APP.state.homeChat.push({role:'user',text:prompt});
   input.value='';
+  const pendingMessage={role:'bot',text:'Thinking...'};
+  APP.state.homeChat.push(pendingMessage);
   renderHomeAiMessages();
-  await APP.request('ai.home.prompt',{prompt},APP.config.endpoints.aiTutor);
-  APP.state.homeChat.push({role:'bot',text:buildTutorReply(prompt,getSelectedCourse())});
+  const result=await APP.request('ai.home.prompt',{prompt},APP.config.endpoints.aiTutor);
+  pendingMessage.text=resolveTutorReply(result,prompt,getSelectedCourse());
   renderHomeAiMessages();
 }
 

@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import timedelta
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import jwt
 
@@ -12,11 +13,12 @@ from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from . import admin as academy_admin
 from . import models
+from .groq_client import GroqTutorResult
 from .services import (
     AUTH_COOKIE_NAME,
     JWT_ALGORITHM,
@@ -788,6 +790,7 @@ class SkillForgeApiTests(TestCase):
         family_revoked_response = self.client.post("/api/auth/refresh", data=json.dumps({}), content_type="application/json")
         self.assertEqual(family_revoked_response.status_code, 401)
 
+    @override_settings(GROQ_API_KEY="")
     def test_learning_workflows_persist_through_api(self):
         enrollment_response = self.client.post(
             "/api/enrollments",
@@ -824,6 +827,34 @@ class SkillForgeApiTests(TestCase):
         )
         self.assertEqual(ai_response.status_code, 200)
         self.assertIn("Start by defining one job", ai_response.json()["reply"])
+
+    @override_settings(GROQ_API_KEY="test-groq-key")
+    def test_ai_tutor_uses_groq_when_configured(self):
+        with patch("academy.views.ask_groq_tutor") as ask_groq_tutor:
+            ask_groq_tutor.return_value = GroqTutorResult(
+                reply="Use a small API adapter and handle timeout errors.",
+                model="llama-3.3-70b-versatile",
+            )
+            response = self.client.post(
+                "/api/ai/tutor",
+                data=json.dumps(
+                    {
+                        "courseId": "claude-ai-engineering",
+                        "lessonId": "api-lesson",
+                        "prompt": "How do I connect an API safely?",
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["reply"], "Use a small API adapter and handle timeout errors.")
+        self.assertEqual(payload["provider"], "groq")
+        self.assertEqual(payload["model"], "llama-3.3-70b-versatile")
+        ask_groq_tutor.assert_called_once()
+        _prompt, call_kwargs = ask_groq_tutor.call_args
+        self.assertEqual(call_kwargs["lesson_id"], "api-lesson")
 
     def test_lesson_questions_load_and_completion_persists(self):
         User = get_user_model()
